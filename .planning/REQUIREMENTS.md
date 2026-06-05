@@ -125,20 +125,75 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCAF-01 to SCAF-05 | Phase 1 | Pending |
-| DATA-01 to DATA-15 | Phase 2 | Pending |
-| PORT-01 to PORT-13 | Phase 3 | Pending |
-| AGNT-01 to AGNT-08 | Phase 4a | Pending |
-| AGNT-09 to AGNT-12 | Phase 4b | Pending |
-| AGNT-13 to AGNT-16 | Phase 4c | Pending |
-| ORCH-01 to ORCH-07 | Phase 5 | Pending |
-| TEST-01 to TEST-07 | Phase 6 | Pending |
+| SCAF-01 | Phase 1 — Foundation | Pending |
+| SCAF-02 | Phase 1 — Foundation | Pending |
+| SCAF-03 | Phase 1 — Foundation | Pending |
+| SCAF-04 | Phase 1 — Foundation | Pending |
+| SCAF-05 | Phase 1 — Foundation | Pending |
+| DATA-01 | Phase 2 — Data Layer | Pending |
+| DATA-02 | Phase 2 — Data Layer | Pending |
+| DATA-03 | Phase 2 — Data Layer | Pending |
+| DATA-04 | Phase 2 — Data Layer | Pending |
+| DATA-05 | Phase 2 — Data Layer | Pending |
+| DATA-06 | Phase 2 — Data Layer | Pending |
+| DATA-07 | Phase 2 — Data Layer | Pending |
+| DATA-08 | Phase 2 — Data Layer | Pending |
+| DATA-09 | Phase 2 — Data Layer | Pending |
+| DATA-10 | Phase 2 — Data Layer | Pending |
+| DATA-11 | Phase 2 — Data Layer | Pending |
+| DATA-12 | Phase 2 — Data Layer | Pending |
+| DATA-13 | Phase 2 — Data Layer | Pending |
+| DATA-14 | Phase 2 — Data Layer | Pending |
+| DATA-15 | Phase 2 — Data Layer | Pending |
+| PORT-01 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-02 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-03 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-04 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-05 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-06 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-07 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-08 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-09 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-10 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-11 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-12 | Phase 3 — Paper Portfolio Engine | Pending |
+| PORT-13 | Phase 3 — Paper Portfolio Engine | Pending |
+| AGNT-01 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-02 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-03 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-04 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-05 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-06 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-07 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-08 | Phase 4a — Pre-Market Agents | Pending |
+| AGNT-09 | Phase 4b — Market Session Agents | Pending |
+| AGNT-10 | Phase 4b — Market Session Agents | Pending |
+| AGNT-11 | Phase 4b — Market Session Agents | Pending |
+| AGNT-12 | Phase 4b — Market Session Agents | Pending |
+| AGNT-13 | Phase 4c — Post-Market Agent | Pending |
+| AGNT-14 | Phase 4c — Post-Market Agent | Pending |
+| AGNT-15 | Phase 4c — Post-Market Agent | Pending |
+| AGNT-16 | Phase 4c — Post-Market Agent | Pending |
+| ORCH-01 | Phase 5 — Orchestrator & Scheduler | Pending |
+| ORCH-02 | Phase 5 — Orchestrator & Scheduler | Pending |
+| ORCH-03 | Phase 5 — Orchestrator & Scheduler | Pending |
+| ORCH-04 | Phase 5 — Orchestrator & Scheduler | Pending |
+| ORCH-05 | Phase 5 — Orchestrator & Scheduler | Pending |
+| ORCH-06 | Phase 5 — Orchestrator & Scheduler | Pending |
+| ORCH-07 | Phase 5 — Orchestrator & Scheduler | Pending |
+| TEST-01 | Phase 6 — Dry-Run & Backtest | Pending |
+| TEST-02 | Phase 6 — Dry-Run & Backtest | Pending |
+| TEST-03 | Phase 6 — Dry-Run & Backtest | Pending |
+| TEST-04 | Phase 6 — Dry-Run & Backtest | Pending |
+| TEST-05 | Phase 6 — Dry-Run & Backtest | Pending |
+| TEST-06 | Phase 6 — Dry-Run & Backtest | Pending |
+| TEST-07 | Phase 6 — Dry-Run & Backtest | Pending |
 
 **Coverage:**
 - v1 requirements: 57 total
 - Mapped to phases: 57
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-05*
-*Last updated: 2026-06-05 after initial definition*
+*Last updated: 2026-06-05 — traceability expanded to per-requirement rows after roadmap creation*
