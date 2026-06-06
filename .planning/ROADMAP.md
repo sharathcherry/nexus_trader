@@ -115,7 +115,15 @@ Plans:
   3. Any Claude suggestion that raises MAX_OPEN_POSITIONS, lowers MIN_RISK_REWARD below 1.5, or raises RISK_PER_TRADE_PCT above 1.5% is auto-rejected with a log entry; the remaining valid suggestions are preserved
   4. Review JSON is saved to `logs/performance/review_YYYYMMDD.json`; on API failure a `review_failed_YYYYMMDD.json` sentinel is written; formatted tabulate summary prints to terminal in all cases
 
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+**Wave 1**
+
+- [ ] 04C-01-PLAN.md — Test scaffold (conftest.py + test_agent_i9.py, 10 test cases, all RED)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04C-02-PLAN.md — AgentI9 full implementation (agents/agent_i9.py, makes all 10 tests GREEN)
 
 ### Phase 5: Orchestrator & Scheduler
 
@@ -156,7 +164,7 @@ Plans:
 | 3. Paper Portfolio Engine | 0/0 | Not started | - |
 | 4a. Pre-Market Agents | 0/0 | Not started | - |
 | 4b. Market Session Agents | 0/4 | Planned | - |
-| 4c. Post-Market Agent | 0/0 | Not started | - |
+| 4c. Post-Market Agent | 0/2 | Planned | - |
 | 5. Orchestrator & Scheduler | 0/0 | Not started | - |
 | 6. Dry-Run & Backtest | 0/0 | Not started | - |
 
@@ -188,4 +196,4 @@ All 57 v1 requirements mapped. No orphans. Coverage: 100%.
 ---
 
 *Roadmap created: 2026-06-05*
-*Last updated: 2026-06-06 after Phase 4b planning*
+*Last updated: 2026-06-06 after Phase 4C planning*
