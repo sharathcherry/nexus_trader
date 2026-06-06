@@ -49,7 +49,16 @@
   3. `Indicators.vwap()`, `.ema()`, `.rsi()`, `.atr()`, `.orb()`, `.volume_ratio()` all produce float outputs (no NaN) on a valid intraday DataFrame; VWAP resets at 09:15 IST daily
   4. NSE universe contains exactly 100 symbols, all ending in `.NS` with sector tags; no `ta` library imports remain anywhere in the data module
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 0**
+
+- [ ] 02-00-PLAN.md — Test scaffold (tests/conftest.py + tests/test_data_layer.py, stubs for DATA-01 through DATA-15, all RED)
+
+**Wave 1** *(blocked on Wave 0 completion)*
+
+- [ ] 02-01-PLAN.md — NSE universe (data/universe.py) + MarketDataFetcher (data/market_data.py), DATA-01 through DATA-09
+- [ ] 02-02-PLAN.md — Indicators class (data/indicators.py), DATA-10 through DATA-15
 
 ### Phase 3: Paper Portfolio Engine
 
@@ -160,7 +169,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/0 | Not started | - |
-| 2. Data Layer | 0/0 | Not started | - |
+| 2. Data Layer | 0/3 | Planned | - |
 | 3. Paper Portfolio Engine | 0/0 | Not started | - |
 | 4a. Pre-Market Agents | 0/0 | Not started | - |
 | 4b. Market Session Agents | 0/4 | Planned | - |
