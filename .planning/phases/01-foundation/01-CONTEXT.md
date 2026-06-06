@@ -32,6 +32,7 @@ Project is runnable with correct dependencies — google-genai SDK wired, config
 - **D-08:** `google-generativeai` is ABSENT. `google-genai>=2.0.0` is present (locked decision from STATE.md).
 - **D-09:** `ta` library is ABSENT — inline pandas indicators decision made in STATE.md. SCAF-03 listed ta but it's overridden by the architectural decision.
 - **D-10:** All other deps pinned: `yfinance==0.2.40`, `pandas>=2.0,<3.0`, `numpy>=1.24`, `APScheduler==3.10.4`, `anthropic>=0.40.0`, `google-genai>=2.0.0`, `colorlog>=6.7`, `tabulate>=0.9`, `pytz>=2024.1`, `python-dotenv>=1.0`.
+- **D-11:** `pybroker>=1.0.0` is present in requirements.txt. Pinned here in Phase 1 so the environment is complete from the start; actual usage begins in Phase 6 (NexusBacktester). No pybroker imports appear in Phase 1–5 code.
 
 ### Claude's Discretion
 - Exact colorlog formatter string (timestamp format, field widths)
