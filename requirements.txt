@@ -12,8 +12,8 @@ google-genai>=2.0.0
 
 # Technical Analysis (inline pandas — no ta library)
 
-# Backtesting
-pybroker>=1.0.0
+# Backtesting — pybroker>=1.0.0 (published as lib-pybroker on PyPI)
+lib-pybroker>=1.0.0
 
 # Data processing / output / logging
 colorlog>=6.7
