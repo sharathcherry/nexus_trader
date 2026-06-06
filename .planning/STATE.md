@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-06-06T20:52:00.000Z"
+status: in-progress
+last_updated: "2026-06-06T21:10:00.000Z"
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 15
-  completed_plans: 1
-  percent: 7
+  completed_plans: 4
+  percent: 27
 ---
 
 # STATE: nexus_trader
 
 **Project:** nexus_trader — NSE India Intraday Paper Trading System
 **Last updated:** 2026-06-06
-**Updated by:** executor (Phase 1 complete)
+**Updated by:** executor (Phase 2 complete)
 
 ---
 
@@ -24,25 +24,25 @@ progress:
 
 **Core Value:** A reliable daily paper trading pipeline that wakes up at 8:30 AM IST, runs without intervention through 3:30 PM, and produces a reviewed trade ledger — proving the strategy logic works before any real capital is risked.
 
-**Current Focus:** Phase 2 — Data Layer
+**Current Focus:** Phase 3 — Paper Portfolio Engine
 
 ---
 
 ## Current Position
 
-**Active Phase:** 2 — Data Layer
-**Active Plan:** None (not started)
-**Phase Status:** Phase 1 complete
-**Overall Status:** Foundation scaffold complete, ready for Phase 2
+**Active Phase:** 3 — Paper Portfolio Engine
+**Active Plan:** None (Phase 2 complete, Phase 3 not started)
+**Phase Status:** Phase 2 complete
+**Overall Status:** Data layer complete — MarketDataFetcher, Indicators, universe all live
 
 ```
-Progress: [█████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 7% (1/8 phases)
+Progress: [████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 27% (2/8 phases)
 ```
 
 | Phase | Status |
 |-------|--------|
 | 1. Foundation | Complete |
-| 2. Data Layer | Not started |
+| 2. Data Layer | Complete |
 | 3. Paper Portfolio Engine | Not started |
 | 4a. Pre-Market Agents | Not started |
 | 4b. Market Session Agents | Not started |
@@ -56,10 +56,10 @@ Progress: [█████░░░░░░░░░░░░░░░░░░
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 1/8 |
-| Requirements delivered | 5/57 (SCAF-01 through SCAF-05) |
+| Phases complete | 2/8 |
+| Requirements delivered | 20/57 (SCAF-01..05 + DATA-01..15) |
 | Plans written | 15 |
-| Plans complete | 1 |
+| Plans complete | 4 |
 | Blockers active | 0 |
 
 ---
@@ -97,7 +97,7 @@ Progress: [█████░░░░░░░░░░░░░░░░░░
 ### Todos (Active)
 
 - [x] Phase 1 — Foundation complete (2026-06-06)
-- [ ] Begin Phase 2 with `/gsd:execute-phase 2`
+- [x] Phase 2 — Data Layer complete (2026-06-06)
 - [ ] Verify corporate actions data source accessibility (nseindia.com vs nselib) before Phase 4a
 - [ ] Compile hardcoded list of restructured Nifty 100 symbols with post-restructuring date caps before Phase 6
 
@@ -109,10 +109,11 @@ None active.
 
 ## Session Continuity
 
-**To resume:** Run `/gsd:execute-phase 2` to begin Data Layer phase.
+**To resume:** Run `/gsd:execute-phase 3` to begin Paper Portfolio Engine phase.
 
 **Context for next session:**
 
+- Phase 2 complete: data/universe.py (100 Nifty symbols), data/market_data.py (MarketDataFetcher), data/indicators.py (Indicators class with 6 @staticmethods), tests/ scaffold with 13/16 tests green
 - Phase 1 complete: requirements.txt, config.py, utils/logger.py, folder scaffold, .env.example, .gitignore, main.py
 - pybroker installed as lib-pybroker (correct PyPI package name)
 - google-genai>=2.0.0 installed, google-generativeai absent from requirements.txt
