@@ -160,7 +160,16 @@ Plans:
   3. Backtest report contains all eight required metrics: `total_trades`, `win_rate`, `total_net_pnl`, `total_return_pct`, `sharpe_ratio`, `max_drawdown_pct`, `profit_factor`, `monthly_returns`
   4. README.md documents: installation steps, `.env` setup with API key sources, and all three run modes (`python main.py`, `python main.py --dry-run`, `python backtest.py`)
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1** *(parallel — no shared files)*
+
+- [ ] 06-01-PLAN.md — main.py --dry-run one-shot branch + execution/scheduler.py date_override parameter (TEST-01, TEST-02)
+- [ ] 06-02-PLAN.md — NexusBacktester class in execution/backtester.py — constructor, day loop, gap filter, exit logic, 8-metric run() (TEST-03, TEST-04, TEST-05)
+
+**Wave 2** *(blocked on 06-02 completion)*
+
+- [ ] 06-03-PLAN.md — backtest.py CLI entry point + README.md project documentation (TEST-06, TEST-07)
 
 ---
 
@@ -175,7 +184,7 @@ Plans:
 | 4b. Market Session Agents | 0/4 | Planned | - |
 | 4c. Post-Market Agent | 0/2 | Planned | - |
 | 5. Orchestrator & Scheduler | 0/0 | Not started | - |
-| 6. Dry-Run & Backtest | 0/0 | Not started | - |
+| 6. Dry-Run & Backtest | 0/3 | Planned | - |
 
 ---
 
@@ -201,8 +210,3 @@ All 57 v1 requirements mapped. No orphans. Coverage: 100%.
 
 - **Phase 4a (Gemini agents):** Gemini free-tier TPM budget was reduced December 2025. Log `response.usage_metadata.total_token_count` from the first Gemini call and monitor daily cumulative spend. Size I2 batch at max 20 stocks at 1 req/sec.
 - **Phase 6 (Backtester):** NSE Bhavcopy cross-validation required. Maintain a hardcoded list of Nifty 100 symbols with corporate restructurings (mergers/demergers 2022-2025) and cap their lookback dates accordingly. Verify before trusting backtest results.
-
----
-
-*Roadmap created: 2026-06-05*
-*Last updated: 2026-06-06 after Phase 4C planning*
