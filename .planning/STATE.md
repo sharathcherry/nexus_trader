@@ -3,20 +3,20 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-06-06T21:10:00.000Z"
+last_updated: "2026-06-06T21:12:00.000Z"
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 4
-  percent: 27
+  completed_plans: 6
+  percent: 40
 ---
 
 # STATE: nexus_trader
 
 **Project:** nexus_trader — NSE India Intraday Paper Trading System
 **Last updated:** 2026-06-06
-**Updated by:** executor (Phase 2 complete)
+**Updated by:** executor (Phase 3 complete)
 
 ---
 
@@ -24,26 +24,26 @@ progress:
 
 **Core Value:** A reliable daily paper trading pipeline that wakes up at 8:30 AM IST, runs without intervention through 3:30 PM, and produces a reviewed trade ledger — proving the strategy logic works before any real capital is risked.
 
-**Current Focus:** Phase 3 — Paper Portfolio Engine
+**Current Focus:** Phase 4 — Agent Layer (Pre-Market, Market Session, Post-Market)
 
 ---
 
 ## Current Position
 
-**Active Phase:** 3 — Paper Portfolio Engine
-**Active Plan:** None (Phase 2 complete, Phase 3 not started)
-**Phase Status:** Phase 2 complete
-**Overall Status:** Data layer complete — MarketDataFetcher, Indicators, universe all live
+**Active Phase:** 4 — Agent Layer
+**Active Plan:** None (Phase 3 complete, Phase 4 not started)
+**Phase Status:** Phase 3 complete
+**Overall Status:** Paper portfolio engine complete — PaperPortfolio (SQLite WAL), OrderManager (exit logic, trailing stops) live
 
 ```
-Progress: [████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 27% (2/8 phases)
+Progress: [████████████████░░░░░░░░░░░░░░░░░░░░░░░░] 40% (3/8 phases)
 ```
 
 | Phase | Status |
 |-------|--------|
 | 1. Foundation | Complete |
 | 2. Data Layer | Complete |
-| 3. Paper Portfolio Engine | Not started |
+| 3. Paper Portfolio Engine | Complete |
 | 4a. Pre-Market Agents | Not started |
 | 4b. Market Session Agents | Not started |
 | 4c. Post-Market Agent | Not started |
@@ -56,10 +56,10 @@ Progress: [████████████░░░░░░░░░░░
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 2/8 |
-| Requirements delivered | 20/57 (SCAF-01..05 + DATA-01..15) |
+| Phases complete | 3/8 |
+| Requirements delivered | 30/57 (SCAF-01..05 + DATA-01..15 + PORT-01..10) |
 | Plans written | 15 |
-| Plans complete | 4 |
+| Plans complete | 6 |
 | Blockers active | 0 |
 
 ---
@@ -98,6 +98,7 @@ Progress: [████████████░░░░░░░░░░░
 
 - [x] Phase 1 — Foundation complete (2026-06-06)
 - [x] Phase 2 — Data Layer complete (2026-06-06)
+- [x] Phase 3 — Paper Portfolio Engine complete (2026-06-06)
 - [ ] Verify corporate actions data source accessibility (nseindia.com vs nselib) before Phase 4a
 - [ ] Compile hardcoded list of restructured Nifty 100 symbols with post-restructuring date caps before Phase 6
 
@@ -109,17 +110,18 @@ None active.
 
 ## Session Continuity
 
-**To resume:** Run `/gsd:execute-phase 3` to begin Paper Portfolio Engine phase.
+**To resume:** Run `/gsd:execute-phase 4` to begin Agent Layer phase.
 
 **Context for next session:**
 
+- Phase 3 complete: execution/portfolio.py (PaperPortfolio, SQLite WAL, Zerodha math), execution/order_manager.py (OrderManager, qty sizing, exit logic, trailing stops)
 - Phase 2 complete: data/universe.py (100 Nifty symbols), data/market_data.py (MarketDataFetcher), data/indicators.py (Indicators class with 6 @staticmethods), tests/ scaffold with 13/16 tests green
 - Phase 1 complete: requirements.txt, config.py, utils/logger.py, folder scaffold, .env.example, .gitignore, main.py
-- pybroker installed as lib-pybroker (correct PyPI package name)
-- google-genai>=2.0.0 installed, google-generativeai absent from requirements.txt
+- Key imports for Phase 4: `from execution.portfolio import PaperPortfolio`, `from execution.order_manager import OrderManager`
+- Brokerage math verified: exchange rate 0.0000307 confirmed, net_pnl=Rs494.586 for buy@500/sell@550/qty=10
+- DB path: execution/portfolio.db (created on first PaperPortfolio() init)
 - Config singleton at `from config import config` — all phases use this pattern
 - Logger factory at `from utils.logger import setup_logger` — all phases use this pattern
-- .env file must exist with 4 keys before any import of config
 
 ---
 
