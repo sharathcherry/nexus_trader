@@ -76,7 +76,12 @@
   2. Each of the four strategies (GAP_AND_GO, GAP_FILL, ORB_BREAKOUT, VWAP_RECLAIM) triggers a buy on a crafted synthetic candle sequence that meets its documented entry conditions
   3. `force_squareoff_all()` at 15:15 closes all open positions exactly once (idempotent); subsequent calls produce no additional trades
   4. AgentI6 detects partial exit at 1:1 R:R, updates trailing SL per strategy rules, and flags `POSSIBLE_CIRCUIT` when price is unchanged for 3 consecutive polling cycles
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 04B-01-PLAN.md — AgentI6 position monitor (circuit detection, hard exits, partial exit, trailing SL)
+- [ ] 04B-02-PLAN.md — AgentI4 core infrastructure (__init__, batch fetch, ORB override, force_squareoff_all)
+- [ ] 04B-03-PLAN.md — AgentI4 async run() loop and four-strategy signal evaluation
+- [ ] 04B-04-PLAN.md — pytest suites for AGNT-09 through AGNT-12, conftest.py fixtures
 
 ### Phase 4c: Post-Market Agent
 **Goal**: After each trading session, Claude Sonnet produces a structured review of the day's trades with parameter advisory — and the review is saved even if the API call partially fails
@@ -121,7 +126,7 @@
 | 2. Data Layer | 0/0 | Not started | - |
 | 3. Paper Portfolio Engine | 0/0 | Not started | - |
 | 4a. Pre-Market Agents | 0/0 | Not started | - |
-| 4b. Market Session Agents | 0/0 | Not started | - |
+| 4b. Market Session Agents | 0/4 | Planned | - |
 | 4c. Post-Market Agent | 0/0 | Not started | - |
 | 5. Orchestrator & Scheduler | 0/0 | Not started | - |
 | 6. Dry-Run & Backtest | 0/0 | Not started | - |
@@ -154,4 +159,4 @@ All 57 v1 requirements mapped. No orphans. Coverage: 100%.
 ---
 
 *Roadmap created: 2026-06-05*
-*Last updated: 2026-06-05 after initial creation*
+*Last updated: 2026-06-06 after Phase 4b planning*
