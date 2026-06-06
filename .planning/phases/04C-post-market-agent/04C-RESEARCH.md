@@ -589,22 +589,22 @@ def _print_summary(review: DailyReview | None, state: str, today_str: str) -> No
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`avg_rr_achieved` in rolling stats (D-09)**
    - What we know: `trades` table does not store `stop_loss`. R:R achieved cannot be computed from existing schema.
    - What's unclear: Does the planner want (a) omit `avg_rr_achieved` from stats block, or (b) add `initial_stop_loss` column to `trades` schema in Phase 3?
-   - Recommendation: Omit from Phase 4C stats. Add a comment in agent code noting the gap. If needed, address in a Phase 3 addendum before Phase 4C implementation.
+   - RESOLVED: Omit `avg_rr_achieved` from rolling stats block. The `trades` table lacks a `stop_loss` column. Plan 04C-02 codifies this by computing only `trade_count`, `win_rate`, and `avg_net_pnl` per strategy. Schema extension deferred to a Phase 3 addendum if needed.
 
 2. **`session_verdict` trust vs inference**
    - What we know: D-06 defines `session_verdict` as `"PROFITABLE"` / `"BREAKEVEN"` / `"LOSS"` — a field Claude fills. CONTEXT.md discretion note says AgentI9 could infer this from `net_pnl` instead.
    - What's unclear: Should AgentI9 override Claude's `session_verdict` with the computed truth from `get_daily_report()` net P&L?
-   - Recommendation: Trust Claude's verdict but log a WARNING if it contradicts the computed net P&L sign. No auto-override — preserves Claude's analytical framing (e.g., "BREAKEVEN" might be Claude's judgment despite a small positive P&L).
+   - RESOLVED: Trust Claude's verdict per CONTEXT.md discretion. No auto-override. Claude's framing (e.g. "BREAKEVEN" despite small positive P&L) is intentionally preserved.
 
 3. **`PaperPortfolio.get_daily_report()` exact return type**
    - What we know: Phase 3 CONTEXT.md D-01 says it "returns full trade ledger with net P&L, win rate, best/worst trade, charges paid" (PORT-08). The exact Python type (list of dicts vs dataclass vs DataFrame) is unspecified — Phase 3 is not yet implemented.
    - What's unclear: AgentI9 must iterate over today's trades to build the prompt. If `get_daily_report()` returns a summary dict rather than a list of individual trades, AgentI9 may need to query `trades` directly for today's ledger too.
-   - Recommendation: The planner should specify that `get_daily_report()` returns a `list[dict]` of individual closed trade records (one dict per trade), so AgentI9 can directly iterate. This matches the schema described in PORT-08.
+   - RESOLVED: `get_daily_report()` must return `list[dict]` of individual closed trade records (keys: symbol, strategy, entry_price, exit_price, qty, gross_pnl, brokerage, net_pnl, exit_reason). Codified as interface contract in Plan 04C-02. Phase 3 implementation must honour this contract.
 
 ---
 
