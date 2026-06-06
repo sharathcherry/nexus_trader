@@ -1,0 +1,600 @@
+"""
+execution/portfolio.py — PaperPortfolio
+
+SQLite-backed paper trading portfolio with Zerodha brokerage math.
+Handles buy/sell/partial_exit, daily reset, halt logic, force squareoff.
+
+Schema decisions:
+  D-01: Two-table schema (positions + trades) + meta key-value store
+  D-02: WAL journal mode on every connection
+  D-03: DB at execution/portfolio.db
+  D-04: Write-through on every trade
+  D-07/D-08: Exact Zerodha formula with exchange rate 0.0000307 (STATE.md correction)
+"""
+
+import sqlite3
+from pathlib import Path
+from datetime import datetime
+
+import pytz
+
+from config import config
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+IST = pytz.timezone("Asia/Kolkata")
+DB_PATH = Path("execution/portfolio.db")
+
+
+def _get_conn() -> sqlite3.Connection:
+    """Return a SQLite connection with WAL mode, Row factory, and foreign keys."""
+    conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+class PaperPortfolio:
+    """
+    Paper trading portfolio backed by SQLite.
+
+    Persists open positions and closed trades across process restarts.
+    Applies Zerodha brokerage math to every executed trade.
+    Enforces daily loss halt and position/trade count limits.
+    """
+
+    def __init__(self) -> None:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        self._create_tables()
+        self._restore_state()
+
+    # ------------------------------------------------------------------
+    # Schema
+    # ------------------------------------------------------------------
+
+    def _create_tables(self) -> None:
+        """Create positions, trades, and meta tables if they do not exist."""
+        with _get_conn() as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS positions (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol         TEXT    NOT NULL UNIQUE,
+                    entry_price    REAL    NOT NULL,
+                    qty            INTEGER NOT NULL,
+                    stop_loss      REAL    NOT NULL,
+                    target         REAL    NOT NULL,
+                    strategy       TEXT    NOT NULL,
+                    entry_time     TEXT    NOT NULL,
+                    partial_exited INTEGER NOT NULL DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS trades (
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol           TEXT    NOT NULL,
+                    entry_price      REAL    NOT NULL,
+                    exit_price       REAL    NOT NULL,
+                    qty              INTEGER NOT NULL,
+                    strategy         TEXT    NOT NULL,
+                    entry_time       TEXT    NOT NULL,
+                    exit_time        TEXT    NOT NULL,
+                    gross_pnl        REAL    NOT NULL,
+                    brokerage        REAL    NOT NULL,
+                    stt              REAL    NOT NULL,
+                    exchange_charges REAL    NOT NULL,
+                    gst              REAL    NOT NULL,
+                    total_charges    REAL    NOT NULL,
+                    net_pnl          REAL    NOT NULL,
+                    exit_reason      TEXT    NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS meta (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+            """)
+
+    # ------------------------------------------------------------------
+    # Meta key-value helpers
+    # ------------------------------------------------------------------
+
+    def _get_meta(self, key: str) -> str:
+        """Return meta value as string, or empty string if key missing."""
+        with _get_conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else ""
+
+    def _set_meta(self, key: str, value: str) -> None:
+        """Upsert a meta key-value pair."""
+        with _get_conn() as conn:
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, str(value)),
+            )
+
+    # ------------------------------------------------------------------
+    # State restoration and daily reset
+    # ------------------------------------------------------------------
+
+    def _restore_state(self) -> None:
+        """
+        Seed meta table on first run, or reset daily fields on new trading day.
+        """
+        # Seed defaults if meta table is empty
+        if not self._get_meta("capital"):
+            self._set_meta("capital", str(float(config.CAPITAL)))
+            self._set_meta("daily_pnl", "0.0")
+            self._set_meta("trade_count", "0")
+            self._set_meta("is_halted", "0")
+            self._set_meta("force_squaredoff", "0")
+            self._set_meta("last_trade_date", "")
+
+        # Daily reset: if stored date differs from today, reset daily fields
+        today = datetime.now(IST).strftime("%Y-%m-%d")
+        last_date = self._get_meta("last_trade_date")
+        if last_date != today:
+            self._set_meta("daily_pnl", "0.0")
+            self._set_meta("trade_count", "0")
+            self._set_meta("is_halted", "0")
+            self._set_meta("force_squaredoff", "0")
+            self._set_meta("last_trade_date", today)
+            logger.info("Daily state reset for %s", today)
+
+    # ------------------------------------------------------------------
+    # Properties (read from meta each time — write-through consistency)
+    # ------------------------------------------------------------------
+
+    @property
+    def capital(self) -> float:
+        return float(self._get_meta("capital"))
+
+    @property
+    def daily_pnl(self) -> float:
+        return float(self._get_meta("daily_pnl"))
+
+    @property
+    def trade_count(self) -> int:
+        return int(self._get_meta("trade_count"))
+
+    @property
+    def is_halted(self) -> bool:
+        return self._get_meta("is_halted") == "1"
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_open_positions(self) -> list:
+        """Return all rows from the positions table."""
+        with _get_conn() as conn:
+            rows = conn.execute("SELECT * FROM positions").fetchall()
+        return rows
+
+    def _get_position(self, symbol: str):
+        """Return a single position row by symbol, or None."""
+        with _get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM positions WHERE symbol = ?", (symbol,)
+            ).fetchone()
+        return row
+
+    def _now_ist_str(self) -> str:
+        """Return current IST datetime as ISO 8601 string."""
+        return datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _today_ist(self) -> str:
+        """Return today's IST date as YYYY-MM-DD."""
+        return datetime.now(IST).strftime("%Y-%m-%d")
+
+    # ------------------------------------------------------------------
+    # Brokerage math (D-07, D-08 — Zerodha formula, exchange=0.0000307)
+    # ------------------------------------------------------------------
+
+    def _calculate_brokerage(
+        self, buy_price: float, sell_price: float, qty: int
+    ) -> dict:
+        """
+        Compute Zerodha intraday brokerage breakdown.
+
+        Formula (STATE.md corrected exchange rate 0.0000307):
+          turnover         = (buy_price + sell_price) * qty
+          brokerage        = min(20, 0.0003 * turnover)
+          stt              = 0.00025 * sell_price * qty  (sell-side only)
+          exchange_charges = 0.0000307 * turnover
+          gst              = 0.18 * brokerage
+          total_charges    = sum of all four
+        """
+        buy_turnover = buy_price * qty
+        sell_turnover = sell_price * qty
+        turnover = buy_turnover + sell_turnover
+
+        brokerage = min(20.0, 0.0003 * turnover)
+        stt = 0.00025 * sell_turnover
+        exchange_charges = 0.0000307 * turnover
+        gst = 0.18 * brokerage
+        total_charges = brokerage + stt + exchange_charges + gst
+
+        return {
+            "brokerage": round(brokerage, 4),
+            "stt": round(stt, 4),
+            "exchange_charges": round(exchange_charges, 4),
+            "gst": round(gst, 4),
+            "total_charges": round(total_charges, 4),
+        }
+
+    # ------------------------------------------------------------------
+    # Core trading methods
+    # ------------------------------------------------------------------
+
+    def buy(
+        self,
+        symbol: str,
+        entry_price: float,
+        qty: int,
+        stop_loss: float,
+        target: float,
+        strategy: str,
+    ) -> bool:
+        """
+        Open a new paper position.
+
+        Returns True on success, False on any rejection.
+        All rejections are logged at WARNING level with reason.
+        """
+        open_positions = self._get_open_positions()
+        open_symbols = [row["symbol"] for row in open_positions]
+
+        # Guard: halt
+        if self.is_halted:
+            logger.warning(
+                "BUY REJECTED %s — Trading halted (daily loss limit reached)", symbol
+            )
+            return False
+
+        # Guard: max open positions
+        if len(open_positions) >= config.MAX_OPEN_POSITIONS:
+            logger.warning(
+                "BUY REJECTED %s — Max open positions reached (%d)",
+                symbol,
+                config.MAX_OPEN_POSITIONS,
+            )
+            return False
+
+        # Guard: max trades per day
+        if self.trade_count >= config.MAX_TRADES_PER_DAY:
+            logger.warning(
+                "BUY REJECTED %s — Max daily trades reached (%d)",
+                symbol,
+                config.MAX_TRADES_PER_DAY,
+            )
+            return False
+
+        # Guard: already holding
+        if symbol in open_symbols:
+            logger.warning("BUY REJECTED %s — Already holding this symbol", symbol)
+            return False
+
+        entry_time = self._now_ist_str()
+        cost = entry_price * qty
+        new_capital = self.capital - cost
+
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO positions
+                  (symbol, entry_price, qty, stop_loss, target, strategy, entry_time, partial_exited)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (symbol, entry_price, qty, stop_loss, target, strategy, entry_time),
+            )
+
+        # Update meta: capital and trade_count
+        self._set_meta("capital", str(new_capital))
+        self._set_meta("trade_count", str(self.trade_count + 1))
+
+        logger.info(
+            "BUY %s qty=%d @ Rs%.2f | SL=Rs%.2f | Target=Rs%.2f | Strategy=%s",
+            symbol, qty, entry_price, stop_loss, target, strategy,
+        )
+        return True
+
+    def sell(
+        self,
+        symbol: str,
+        exit_price: float,
+        qty: int,
+        exit_reason: str = "MANUAL",
+    ) -> bool:
+        """
+        Close (or partially close) a position.
+
+        Returns True on success, False if position not found.
+        """
+        position = self._get_position(symbol)
+        if position is None:
+            logger.warning("SELL REJECTED %s — Symbol not in open positions", symbol)
+            return False
+
+        charges = self._calculate_brokerage(position["entry_price"], exit_price, qty)
+        gross_pnl = (exit_price - position["entry_price"]) * qty
+        net_pnl = gross_pnl - charges["total_charges"]
+        exit_time = self._now_ist_str()
+
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO trades
+                  (symbol, entry_price, exit_price, qty, strategy,
+                   entry_time, exit_time, gross_pnl, brokerage, stt,
+                   exchange_charges, gst, total_charges, net_pnl, exit_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    symbol,
+                    position["entry_price"],
+                    exit_price,
+                    qty,
+                    position["strategy"],
+                    position["entry_time"],
+                    exit_time,
+                    round(gross_pnl, 4),
+                    charges["brokerage"],
+                    charges["stt"],
+                    charges["exchange_charges"],
+                    charges["gst"],
+                    charges["total_charges"],
+                    round(net_pnl, 4),
+                    exit_reason,
+                ),
+            )
+            conn.execute("DELETE FROM positions WHERE symbol = ?", (symbol,))
+
+        # Update capital: return proceeds minus charges
+        proceeds = (exit_price * qty) - charges["total_charges"]
+        new_capital = self.capital + proceeds
+        new_daily_pnl = self.daily_pnl + net_pnl
+        self._set_meta("capital", str(new_capital))
+        self._set_meta("daily_pnl", str(new_daily_pnl))
+
+        # Check halt threshold
+        halt_threshold = -(config.DAILY_LOSS_LIMIT_PCT * config.CAPITAL)
+        if new_daily_pnl < halt_threshold:
+            self._set_meta("is_halted", "1")
+            logger.warning(
+                "TRADING HALTED — Daily P&L Rs%.2f crossed limit Rs%.2f",
+                new_daily_pnl,
+                halt_threshold,
+            )
+
+        pnl_sign = "+" if net_pnl >= 0 else ""
+        logger.info(
+            "SELL %s qty=%d @ Rs%.2f | P&L=Rs%s%.2f | Reason=%s",
+            symbol, qty, exit_price, pnl_sign, net_pnl, exit_reason,
+        )
+        return True
+
+    def partial_exit(
+        self,
+        symbol: str,
+        exit_price: float,
+        exit_qty: int,
+        exit_reason: str = "PARTIAL_EXIT",
+    ) -> bool:
+        """
+        Exit a portion of an open position (50% typical).
+
+        Returns False if position not found or already partially exited.
+        """
+        position = self._get_position(symbol)
+        if position is None:
+            logger.warning(
+                "PARTIAL EXIT REJECTED %s — Symbol not in open positions", symbol
+            )
+            return False
+
+        if position["partial_exited"] == 1:
+            logger.warning(
+                "PARTIAL EXIT REJECTED %s — Already partially exited", symbol
+            )
+            return False
+
+        charges = self._calculate_brokerage(
+            position["entry_price"], exit_price, exit_qty
+        )
+        gross_pnl = (exit_price - position["entry_price"]) * exit_qty
+        net_pnl = gross_pnl - charges["total_charges"]
+        exit_time = self._now_ist_str()
+
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO trades
+                  (symbol, entry_price, exit_price, qty, strategy,
+                   entry_time, exit_time, gross_pnl, brokerage, stt,
+                   exchange_charges, gst, total_charges, net_pnl, exit_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    symbol,
+                    position["entry_price"],
+                    exit_price,
+                    exit_qty,
+                    position["strategy"],
+                    position["entry_time"],
+                    exit_time,
+                    round(gross_pnl, 4),
+                    charges["brokerage"],
+                    charges["stt"],
+                    charges["exchange_charges"],
+                    charges["gst"],
+                    charges["total_charges"],
+                    round(net_pnl, 4),
+                    exit_reason,
+                ),
+            )
+            conn.execute(
+                """
+                UPDATE positions
+                SET qty = qty - ?, partial_exited = 1
+                WHERE symbol = ?
+                """,
+                (exit_qty, symbol),
+            )
+
+        proceeds = (exit_price * exit_qty) - charges["total_charges"]
+        new_capital = self.capital + proceeds
+        new_daily_pnl = self.daily_pnl + net_pnl
+        self._set_meta("capital", str(new_capital))
+        self._set_meta("daily_pnl", str(new_daily_pnl))
+
+        pnl_sign = "+" if net_pnl >= 0 else ""
+        logger.info(
+            "PARTIAL EXIT %s qty=%d @ Rs%.2f | P&L=Rs%s%.2f",
+            symbol, exit_qty, exit_price, pnl_sign, net_pnl,
+        )
+        return True
+
+    def update_stop_loss(self, symbol: str, new_stop_loss: float) -> bool:
+        """
+        Trail the stop loss upward only.
+
+        Returns True if position found; does not update if new SL is not higher.
+        """
+        position = self._get_position(symbol)
+        if position is None:
+            logger.warning(
+                "UPDATE SL REJECTED %s — Symbol not in open positions", symbol
+            )
+            return False
+
+        if new_stop_loss <= position["stop_loss"]:
+            # Not an error — just a no-op (caller computed same or lower SL)
+            return True
+
+        with _get_conn() as conn:
+            conn.execute(
+                "UPDATE positions SET stop_loss = ? WHERE symbol = ?",
+                (new_stop_loss, symbol),
+            )
+
+        logger.debug(
+            "TRAILING SL %s -> Rs%.2f", symbol, new_stop_loss
+        )
+        return True
+
+    # ------------------------------------------------------------------
+    # Reporting
+    # ------------------------------------------------------------------
+
+    def get_portfolio_summary(self) -> dict:
+        """Return current portfolio state including all open positions."""
+        positions = self._get_open_positions()
+        positions_list = [
+            {
+                "symbol": row["symbol"],
+                "entry_price": row["entry_price"],
+                "qty": row["qty"],
+                "stop_loss": row["stop_loss"],
+                "target": row["target"],
+                "strategy": row["strategy"],
+                "entry_time": row["entry_time"],
+                "partial_exited": bool(row["partial_exited"]),
+            }
+            for row in positions
+        ]
+        return {
+            "capital": self.capital,
+            "daily_pnl": self.daily_pnl,
+            "trade_count": self.trade_count,
+            "is_halted": self.is_halted,
+            "open_positions": len(positions_list),
+            "positions": positions_list,
+        }
+
+    def get_daily_report(self) -> dict:
+        """Return a summary of today's closed trades."""
+        today = self._today_ist()
+        with _get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM trades WHERE DATE(exit_time) = ?", (today,)
+            ).fetchall()
+
+        if not rows:
+            return {
+                "date": today,
+                "total_trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0.0,
+                "gross_pnl": 0.0,
+                "total_charges": 0.0,
+                "net_pnl": 0.0,
+                "best_trade": None,
+                "worst_trade": None,
+                "trades": [],
+            }
+
+        trades_list = [dict(row) for row in rows]
+        wins = sum(1 for t in trades_list if t["net_pnl"] > 0)
+        losses = sum(1 for t in trades_list if t["net_pnl"] <= 0)
+        total = len(trades_list)
+        gross_pnl = sum(t["gross_pnl"] for t in trades_list)
+        total_charges = sum(t["total_charges"] for t in trades_list)
+        net_pnl = sum(t["net_pnl"] for t in trades_list)
+
+        best = max(trades_list, key=lambda t: t["net_pnl"])
+        worst = min(trades_list, key=lambda t: t["net_pnl"])
+
+        return {
+            "date": today,
+            "total_trades": total,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": wins / total if total > 0 else 0.0,
+            "gross_pnl": round(gross_pnl, 4),
+            "total_charges": round(total_charges, 4),
+            "net_pnl": round(net_pnl, 4),
+            "best_trade": {"symbol": best["symbol"], "net_pnl": best["net_pnl"]},
+            "worst_trade": {"symbol": worst["symbol"], "net_pnl": worst["net_pnl"]},
+            "trades": trades_list,
+        }
+
+    # ------------------------------------------------------------------
+    # Force squareoff (D-14 — idempotent, flag set before any close)
+    # ------------------------------------------------------------------
+
+    def force_squareoff_all(self, exit_price_map: dict) -> int:
+        """
+        Close all open positions at end of day.
+
+        Idempotent: second call returns 0 immediately.
+        Sets force_squaredoff flag BEFORE closing any positions.
+
+        Args:
+            exit_price_map: {symbol: price} — price at which to exit each position.
+                            Falls back to entry_price if symbol not in map.
+
+        Returns:
+            Number of positions closed (0 if already squared off).
+        """
+        if self._get_meta("force_squaredoff") == "1":
+            logger.warning("FORCE SQUAREOFF — Already squared off, skipping")
+            return 0
+
+        # Set flag BEFORE closing (crash safety — prevents partial close on restart)
+        self._set_meta("force_squaredoff", "1")
+
+        positions = self._get_open_positions()
+        closed = 0
+        for position in positions:
+            symbol = position["symbol"]
+            price = exit_price_map.get(symbol, position["entry_price"])
+            self.sell(symbol, price, position["qty"], "FORCE_SQUAREOFF")
+            closed += 1
+
+        logger.info("FORCE SQUAREOFF: closed %d positions", closed)
+        return closed
