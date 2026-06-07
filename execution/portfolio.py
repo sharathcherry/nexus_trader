@@ -455,6 +455,31 @@ class PaperPortfolio:
             "SELL %s qty=%d @ Rs%.2f | P&L=Rs%s%.2f | Reason=%s",
             symbol, qty, exit_price, pnl_sign, net_pnl, exit_reason,
         )
+
+        # Deep analytics logging (non-fatal)
+        try:
+            from utils.analytics_logger import analytics
+            analytics.log_trade(
+                symbol=symbol,
+                strategy=position.get("strategy", "UNKNOWN"),
+                entry_price=position["entry_price"],
+                fill_price=position["entry_price"],
+                exit_price=exit_price,
+                qty=qty,
+                stop_loss=position.get("stop_loss", 0.0),
+                target=position.get("target", 0.0),
+                exit_reason=exit_reason,
+                gross_pnl=round(gross_pnl, 4),
+                brokerage=charges["total_charges"],
+                net_pnl=round(net_pnl, 4),
+                capital_before=current_capital,
+                capital_after=new_capital,
+                entry_time=position.get("entry_time", ""),
+                exit_time=exit_time,
+            )
+        except Exception as _ae:
+            logger.debug("Analytics log failed (non-fatal): %s", _ae)
+
         return True
 
     def partial_exit(
@@ -587,280 +612,41 @@ class PaperPortfolio:
     # ------------------------------------------------------------------
 
     def get_portfolio_summary(self) -> dict:
-        """Return current portfolio state including all open positions."""
-        positions = self._get_open_positions()
-        positions_list = [
-            {
-                "symbol": row["symbol"],
-                "entry_price": row["entry_price"],
-                "qty": row["qty"],
-                "stop_loss": row["stop_loss"],
-                "target": row["target"],
-                "strategy": row["strategy"],
-                "entry_time": row["entry_time"],
-                "partial_exited": bool(row["partial_exited"]),
-            }
-            for row in positions
-        ]
-        return {
-            "capital": self.capital,
-            "daily_pnl": self.daily_pnl,
-            "trade_count": self.trade_count,
-            "is_halted": self.is_halted,
-            "open_positions": len(positions_list),
-            "positions": positions_list,
-        }
+        """Return a snapshot of capital, open positions, and today's trades."""
+        conn = _get_conn()
+        if conn is None:
+            return {"capital": float(config.CAPITAL), "positions": [], "trades": []}
+
+        row = conn.execute("SELECT value FROM meta WHERE key = 'capital'").fetchone()
+        capital = float(row["value"]) if row else float(config.CAPITAL)
+
+        positions = [dict(r) for r in conn.execute(
+            "SELECT * FROM positions ORDER BY entry_time DESC"
+        ).fetchall()]
+
+        today = datetime.now(IST).strftime("%Y-%m-%d")
+        trades = [dict(r) for r in conn.execute(
+            "SELECT * FROM trades WHERE exit_time LIKE ? ORDER BY exit_time DESC",
+            (f"{today}%",),
+        ).fetchall()]
+
+        conn.close()
+        return {"capital": capital, "positions": positions, "trades": trades}
 
     def get_daily_report(self) -> dict:
-        """Return a summary of today's closed trades."""
-        today = self._today_ist()
-        with _get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM trades WHERE DATE(exit_time) = ?", (today,)
-            ).fetchall()
+        """Return today P&L and trade list."""
+        conn = _get_conn()
+        if conn is None:
+            return {"daily_pnl": 0.0, "trades": []}
 
-        if not rows:
-            return {
-                "date": today,
-                "total_trades": 0,
-                "wins": 0,
-                "losses": 0,
-                "win_rate": 0.0,
-                "gross_pnl": 0.0,
-                "total_charges": 0.0,
-                "net_pnl": 0.0,
-                "best_trade": None,
-                "worst_trade": None,
-                "trades": [],
-            }
+        row = conn.execute("SELECT value FROM meta WHERE key = 'daily_pnl'").fetchone()
+        daily_pnl = float(row["value"]) if row else 0.0
 
-        trades_list = [dict(row) for row in rows]
-        wins = sum(1 for t in trades_list if t["net_pnl"] > 0)
-        losses = sum(1 for t in trades_list if t["net_pnl"] <= 0)
-        total = len(trades_list)
-        gross_pnl = sum(t["gross_pnl"] for t in trades_list)
-        total_charges = sum(t["total_charges"] for t in trades_list)
-        net_pnl = sum(t["net_pnl"] for t in trades_list)
+        today = datetime.now(IST).strftime("%Y-%m-%d")
+        trades = [dict(r) for r in conn.execute(
+            "SELECT * FROM trades WHERE exit_time LIKE ? ORDER BY exit_time DESC",
+            (f"{today}%",),
+        ).fetchall()]
 
-        best = max(trades_list, key=lambda t: t["net_pnl"])
-        worst = min(trades_list, key=lambda t: t["net_pnl"])
-
-        return {
-            "date": today,
-            "total_trades": total,
-            "wins": wins,
-            "losses": losses,
-            "win_rate": wins / total if total > 0 else 0.0,
-            "gross_pnl": round(gross_pnl, 4),
-            "total_charges": round(total_charges, 4),
-            "net_pnl": round(net_pnl, 4),
-            "best_trade": {"symbol": best["symbol"], "net_pnl": best["net_pnl"]},
-            "worst_trade": {"symbol": worst["symbol"], "net_pnl": worst["net_pnl"]},
-            "trades": trades_list,
-        }
-
-    # ------------------------------------------------------------------
-    # Watchlist persistence (restart resilience)
-    # ------------------------------------------------------------------
-
-    def save_watchlist(self, watchlist: list) -> None:
-        """Persist today's watchlist to DB so it survives a restart."""
-        with _get_conn() as conn:
-            conn.execute("DELETE FROM watchlist")
-            for entry in watchlist:
-                conn.execute(
-                    """INSERT OR REPLACE INTO watchlist
-                       (symbol, sector, gap_pct, gap_score, strategy,
-                        entry_trigger, stop_loss, target, rr_ratio, catalyst_type, atr)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        entry.symbol,
-                        entry.sector or "",
-                        entry.gap_pct,
-                        entry.gap_score,
-                        entry.strategy,
-                        entry.entry_trigger,
-                        entry.stop_loss,
-                        entry.target,
-                        entry.rr_ratio,
-                        entry.catalyst_type or "",
-                        entry.atr,
-                    ),
-                )
-        logger.info("Watchlist saved to DB: %d symbols", len(watchlist))
-
-    def load_watchlist(self) -> list:
-        """Restore watchlist from DB (returns list of dicts, not WatchlistEntry)."""
-        with _get_conn() as conn:
-            rows = conn.execute("SELECT * FROM watchlist").fetchall()
-        return [dict(r) for r in rows]
-
-    def get_weekly_pnl(self) -> list[dict]:
-        """Return net P&L grouped by date for the last 7 trading days."""
-        with _get_conn() as conn:
-            rows = conn.execute(
-                """SELECT DATE(exit_time) as day,
-                          COUNT(*) as trades,
-                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
-                          ROUND(SUM(net_pnl), 2) as net_pnl
-                   FROM trades
-                   WHERE DATE(exit_time) >= DATE('now', '-7 days')
-                   GROUP BY day
-                   ORDER BY day DESC"""
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-    def get_strategy_stats(self) -> list[dict]:
-        """Return win/loss/P&L breakdown per strategy across all trades."""
-        with _get_conn() as conn:
-            rows = conn.execute(
-                """SELECT strategy,
-                          COUNT(*) as total,
-                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
-                          SUM(CASE WHEN net_pnl <= 0 THEN 1 ELSE 0 END) as losses,
-                          ROUND(SUM(net_pnl), 2) as net_pnl,
-                          ROUND(AVG(net_pnl), 2) as avg_pnl
-                   FROM trades
-                   GROUP BY strategy
-                   ORDER BY net_pnl DESC"""
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-    # ------------------------------------------------------------------
-    # Force squareoff (D-14 — idempotent, flag set before any close)
-    # ------------------------------------------------------------------
-
-    def force_squareoff_all(self, exit_price_map: dict) -> int:
-        """
-        Close all open positions at end of day.
-
-        Idempotent: second call returns 0 immediately.
-        Sets force_squaredoff flag BEFORE closing any positions.
-
-        Args:
-            exit_price_map: {symbol: price} — price at which to exit each position.
-                            Falls back to entry_price if symbol not in map.
-
-        Returns:
-            Number of positions closed (0 if already squared off).
-        """
-        if self._get_meta("force_squaredoff") == "1":
-            logger.warning("FORCE SQUAREOFF — Already squared off, skipping")
-            return 0
-
-        # Set flag BEFORE closing (crash safety — prevents partial close on restart)
-        self._set_meta("force_squaredoff", "1")
-
-        positions = self._get_open_positions()
-        closed = 0
-        for position in positions:
-            symbol = position["symbol"]
-            price = exit_price_map.get(symbol, position["entry_price"])
-            self.sell(symbol, price, position["qty"], "FORCE_SQUAREOFF")
-            closed += 1
-
-        logger.info("FORCE SQUAREOFF: closed %d positions", closed)
-        return closed
-
-    # ------------------------------------------------------------------
-    # Watchlist and Review SQLite Persistence (Issue 291)
-    # ------------------------------------------------------------------
-
-    def save_watchlist(self, watchlist: list) -> None:
-        """Clear existing watchlist and save a new list of WatchlistEntry objects."""
-        with _get_conn() as conn:
-            conn.execute("DELETE FROM watchlist")
-            for entry in watchlist:
-                conn.execute(
-                    """
-                    INSERT INTO watchlist (
-                        symbol, sector, gap_pct, gap_score, strategy,
-                        entry_trigger, stop_loss, target, rr_ratio, catalyst_type, atr
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        entry.symbol,
-                        entry.sector,
-                        entry.gap_pct,
-                        entry.gap_score,
-                        entry.strategy,
-                        entry.entry_trigger,
-                        entry.stop_loss,
-                        entry.target,
-                        entry.rr_ratio,
-                        entry.catalyst_type,
-                        entry.atr,
-                    ),
-                )
-            logger.info("Saved %d watchlist entries to database", len(watchlist))
-
-    def load_watchlist(self) -> list:
-        """Load watchlist entries from the database."""
-        from agents.models import WatchlistEntry
-        with _get_conn() as conn:
-            rows = conn.execute("SELECT * FROM watchlist").fetchall()
-        result = []
-        for r in rows:
-            result.append(
-                WatchlistEntry(
-                    symbol=r["symbol"],
-                    sector=r["sector"],
-                    gap_pct=r["gap_pct"],
-                    gap_score=r["gap_score"],
-                    strategy=r["strategy"],
-                    entry_trigger=r["entry_trigger"],
-                    stop_loss=r["stop_loss"],
-                    target=r["target"],
-                    rr_ratio=r["rr_ratio"],
-                    catalyst_type=r["catalyst_type"],
-                    atr=r["atr"],
-                )
-            )
-        return result
-
-    def update_watchlist_trigger(self, symbol: str, entry_trigger: float) -> None:
-        """Update entry_trigger for a symbol in the watchlist."""
-        with _get_conn() as conn:
-            conn.execute(
-                "UPDATE watchlist SET entry_trigger = ? WHERE symbol = ?",
-                (entry_trigger, symbol),
-            )
-        logger.debug("Updated watchlist trigger for %s to %.2f", symbol, entry_trigger)
-
-    def save_daily_review(
-        self,
-        review_date: str,
-        verdict: str,
-        winning_strategies: list[str],
-        underperforming_strategies: list[str],
-        parameter_adjustments: list[dict],
-        tomorrow_watch: list[str],
-        summary: str,
-    ) -> None:
-        """Save a daily review to the database."""
-        with _get_conn() as conn:
-            conn.execute(
-                """
-                INSERT INTO daily_reviews (
-                    review_date, session_verdict, winning_strategies,
-                    underperforming_strategies, parameter_adjustments, tomorrow_watch, summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(review_date) DO UPDATE SET
-                    session_verdict = excluded.session_verdict,
-                    winning_strategies = excluded.winning_strategies,
-                    underperforming_strategies = excluded.underperforming_strategies,
-                    parameter_adjustments = excluded.parameter_adjustments,
-                    tomorrow_watch = excluded.tomorrow_watch,
-                    summary = excluded.summary
-                """,
-                (
-                    review_date,
-                    verdict,
-                    json.dumps(winning_strategies),
-                    json.dumps(underperforming_strategies),
-                    json.dumps(parameter_adjustments),
-                    json.dumps(tomorrow_watch),
-                    summary,
-                ),
-            )
-        logger.info("Saved daily review for %s to database", review_date)
+        conn.close()
+        return {"daily_pnl": daily_pnl, "trades": trades}
