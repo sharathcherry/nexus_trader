@@ -1,24 +1,15 @@
 """
-utils/telegram.py — Telegram trade notification helper.
-
-Sends formatted messages to a Telegram chat via the Bot API.
-All methods are fire-and-forget: failures are logged as warnings,
-never raised — the trading loop must not crash due to a notification failure.
-
-Usage:
-    from utils.telegram import notifier
-    notifier.send_buy("RELIANCE.NS", 1480.0, qty=5, strategy="GAP_AND_GO",
-                      sl=1465.0, target=1510.0)
+utils/telegram.py -- Telegram trade notification and chatbot helper for nexus_trader.
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from typing import Optional
 import sqlite3
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import pytz
 import requests
@@ -30,184 +21,9 @@ logger = setup_logger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
 
 _TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
-
-
-class TelegramNotifier:
-    """
-    Thin wrapper around the Telegram Bot API.
-
-    Uses TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from config.
-    Silently disabled if either key is a placeholder/empty.
-    """
-
-    def __init__(self) -> None:
-        self._token = getattr(config, "TELEGRAM_BOT_TOKEN", "")
-        self._chat_id = getattr(config, "TELEGRAM_CHAT_ID", "")
-        self._enabled = bool(
-            self._token
-            and self._chat_id
-            and self._token not in ("fake-token", "your_token_here", "")
-            and self._chat_id not in ("fake-chat", "your_chat_id_here", "")
-        )
-        if not self._enabled:
-            logger.info("TelegramNotifier: disabled (placeholder keys detected)")
-
-    # ------------------------------------------------------------------
-    # Internal sender
-    # ------------------------------------------------------------------
-
-    def _send(self, text: str) -> None:
-        """POST a message. Swallows all exceptions."""
-        if not self._enabled:
-            return
-        try:
-            url = _TELEGRAM_API.format(token=self._token)
-            payload = {
-                "chat_id": self._chat_id,
-                "text": text,
-                "parse_mode": "HTML",
-            }
-            resp = requests.post(url, json=payload, timeout=10)
-            if not resp.ok:
-                logger.warning(
-                    "Telegram send failed: %s %s", resp.status_code, resp.text[:200]
-                )
-        except Exception as exc:
-            logger.warning("Telegram send error (suppressed): %s", exc)
-
-    # ------------------------------------------------------------------
-    # Trade events
-    # ------------------------------------------------------------------
-
-    def send_buy(
-        self,
-        symbol: str,
-        price: float,
-        qty: int,
-        strategy: str,
-        sl: float,
-        target: float,
-    ) -> None:
-        """Send a BUY alert."""
-        now = datetime.now(IST).strftime("%H:%M IST")
-        rr = round((target - price) / (price - sl), 2) if price > sl else 0
-        text = (
-            f"<b>🟢 BUY — {symbol}</b>\n"
-            f"Strategy : {strategy}\n"
-            f"Price    : ₹{price:,.2f}  ×{qty}\n"
-            f"SL       : ₹{sl:,.2f}\n"
-            f"Target   : ₹{target:,.2f}\n"
-            f"R:R      : {rr}\n"
-            f"Time     : {now}"
-        )
-        self._send(text)
-
-    def send_sell(
-        self,
-        symbol: str,
-        price: float,
-        qty: int,
-        reason: str,
-        net_pnl: Optional[float] = None,
-    ) -> None:
-        """Send a SELL / exit alert."""
-        now = datetime.now(IST).strftime("%H:%M IST")
-        emoji = "🔴" if reason in ("SL_HIT",) else "✅" if reason == "TARGET_HIT" else "⬛"
-        pnl_str = f"\nNet P&L  : ₹{net_pnl:+,.2f}" if net_pnl is not None else ""
-        text = (
-            f"<b>{emoji} EXIT — {symbol}</b>\n"
-            f"Reason   : {reason}\n"
-            f"Price    : ₹{price:,.2f}  ×{qty}{pnl_str}\n"
-            f"Time     : {now}"
-        )
-        self._send(text)
-
-    def send_partial_exit(
-        self, symbol: str, price: float, qty: int
-    ) -> None:
-        """Send a partial exit alert."""
-        now = datetime.now(IST).strftime("%H:%M IST")
-        text = (
-            f"<b>🔶 PARTIAL EXIT — {symbol}</b>\n"
-            f"Price    : ₹{price:,.2f}  ×{qty}\n"
-            f"Time     : {now}"
-        )
-        self._send(text)
-
-    def send_squareoff(self, symbol: str, price: float, qty: int) -> None:
-        """Send end-of-day force squareoff alert."""
-        now = datetime.now(IST).strftime("%H:%M IST")
-        text = (
-            f"<b>🔔 SQUAREOFF — {symbol}</b>\n"
-            f"Price    : ₹{price:,.2f}  ×{qty}\n"
-            f"Time     : {now}"
-        )
-        self._send(text)
-
-    # ------------------------------------------------------------------
-    # Session events
-    # ------------------------------------------------------------------
-
-    def send_market_open(self, watchlist_count: int, capital: float) -> None:
-        """Send a session-start summary."""
-        now = datetime.now(IST).strftime("%H:%M IST")
-        text = (
-            f"<b>📈 nexus_trader — Market Open</b>\n"
-            f"Watchlist : {watchlist_count} stocks\n"
-            f"Capital   : ₹{capital:,.0f}\n"
-            f"Time      : {now}"
-        )
-        self._send(text)
-
-    def send_daily_summary(
-        self,
-        total_trades: int,
-        wins: int,
-        net_pnl: float,
-        capital: float,
-    ) -> None:
-        """Send end-of-day P&L summary."""
-        losses = total_trades - wins
-        win_rate = (wins / total_trades * 100) if total_trades else 0
-        emoji = "📗" if net_pnl >= 0 else "📕"
-        text = (
-            f"<b>{emoji} nexus_trader — Daily Summary</b>\n"
-            f"Trades    : {total_trades}  (W:{wins} L:{losses})\n"
-            f"Win Rate  : {win_rate:.0f}%\n"
-            f"Net P&L   : ₹{net_pnl:+,.2f}\n"
-            f"Capital   : ₹{capital:,.0f}"
-        )
-        self._send(text)
-
-    def send_halted(self, daily_pnl: float, limit_pct: float) -> None:
-        """Alert when daily loss limit is breached and trading halts."""
-        text = (
-            f"<b>🚨 TRADING HALTED — Daily loss limit hit</b>\n"
-            f"Daily P&L : ₹{daily_pnl:+,.2f}\n"
-            f"Limit     : {limit_pct:.0%}"
-        )
-        self._send(text)
-
-    def send_error(self, context: str, error: str) -> None:
-        """Send a non-fatal error alert."""
-        text = (
-            f"<b>⚠️ nexus_trader — Error</b>\n"
-            f"Context : {context}\n"
-            f"Error   : {str(error)[:300]}"
-        )
-        self._send(text)
-
-
-# Module-level singletons — import these everywhere
-notifier = TelegramNotifier()
-
-
-# ---------------------------------------------------------------------------
-# Telegram Chatbot (Consolidated from utils/telegram_bot.py)
-# ---------------------------------------------------------------------------
-
 _DB_PATH = Path("execution/portfolio.db")
 _PLACEHOLDER_TOKENS = {"", "fake-token", "your_token_here"}
+
 
 def _get_conn() -> sqlite3.Connection | None:
     if not _DB_PATH.exists():
@@ -218,47 +34,152 @@ def _get_conn() -> sqlite3.Connection | None:
 
 
 def _meta(conn: sqlite3.Connection, key: str, default: str = "0") -> str:
-    row = conn.execute(
-        "SELECT value FROM meta WHERE key = ?", (key,)
-    ).fetchone()
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else default
 
 
-class TelegramCommandBot:
-    """Long-poll Telegram bot that answers trading status queries."""
+# ---------------------------------------------------------------------------
+# TelegramNotifier -- fire-and-forget trade alerts
+# ---------------------------------------------------------------------------
 
+class TelegramNotifier:
+    def __init__(self) -> None:
+        self._token = getattr(config, "TELEGRAM_BOT_TOKEN", "")
+        self._chat_id = getattr(config, "TELEGRAM_CHAT_ID", "")
+        self._enabled = bool(
+            self._token and self._chat_id
+            and self._token not in ("fake-token", "your_token_here", "")
+            and self._chat_id not in ("fake-chat", "your_chat_id_here", "")
+        )
+        if not self._enabled:
+            logger.info("TelegramNotifier: disabled (placeholder keys)")
+
+    def _send(self, text: str) -> None:
+        if not self._enabled:
+            return
+        try:
+            url = _TELEGRAM_API.format(token=self._token)
+            resp = requests.post(url, json={"chat_id": self._chat_id, "text": text, "parse_mode": "HTML"}, timeout=10)
+            if not resp.ok:
+                logger.warning("Telegram send failed: %s %s", resp.status_code, resp.text[:200])
+        except Exception as exc:
+            logger.warning("Telegram send error (suppressed): %s", exc)
+
+    def send_buy(self, symbol: str, price: float, qty: int, strategy: str, sl: float, target: float) -> None:
+        now = datetime.now(IST).strftime("%H:%M IST")
+        rr = round((target - price) / (price - sl), 2) if price > sl else 0
+        self._send(
+            f"<b>BUY {symbol}</b>\n"
+            f"Strategy : {strategy}\n"
+            f"Price    : Rs{price:,.2f}  x{qty}\n"
+            f"SL       : Rs{sl:,.2f}\n"
+            f"Target   : Rs{target:,.2f}\n"
+            f"R:R      : {rr}\n"
+            f"Time     : {now}"
+        )
+
+    def send_sell(self, symbol: str, price: float, qty: int, reason: str, net_pnl: Optional[float] = None) -> None:
+        now = datetime.now(IST).strftime("%H:%M IST")
+        emoji = "STOP" if reason == "SL_HIT" else "TARGET" if reason == "TARGET_HIT" else "EXIT"
+        pnl_str = f"\nNet P&L  : Rs{net_pnl:+,.2f}" if net_pnl is not None else ""
+        self._send(
+            f"<b>{emoji} -- {symbol}</b>\n"
+            f"Reason   : {reason}\n"
+            f"Price    : Rs{price:,.2f}  x{qty}{pnl_str}\n"
+            f"Time     : {now}"
+        )
+
+    def send_partial_exit(self, symbol: str, price: float, qty: int) -> None:
+        now = datetime.now(IST).strftime("%H:%M IST")
+        self._send(f"<b>PARTIAL EXIT -- {symbol}</b>\nPrice : Rs{price:,.2f}  x{qty}\nTime  : {now}")
+
+    def send_squareoff(self, symbol: str, price: float, qty: int) -> None:
+        now = datetime.now(IST).strftime("%H:%M IST")
+        self._send(f"<b>SQUAREOFF -- {symbol}</b>\nPrice : Rs{price:,.2f}  x{qty}\nTime  : {now}")
+
+    def send_market_open(self, watchlist_count: int, capital: float) -> None:
+        now = datetime.now(IST).strftime("%H:%M IST")
+        self._send(
+            f"<b>nexus_trader -- Market Open</b>\n"
+            f"Watchlist : {watchlist_count} stocks\n"
+            f"Capital   : Rs{capital:,.0f}\n"
+            f"Time      : {now}"
+        )
+
+    def send_morning_briefing(self, watchlist: list, bias: str, capital: float) -> None:
+        if not watchlist:
+            self._send(
+                f"<b>nexus_trader -- Morning Briefing</b>\n\n"
+                f"Market Bias : {bias}\n"
+                f"Setups      : 0 -- no trades today\n"
+                f"Capital     : Rs{capital:,.0f}"
+            )
+            return
+        strategy_counts: dict[str, int] = {}
+        for e in watchlist:
+            s = e.get("strategy") if isinstance(e, dict) else getattr(e, "strategy", "?")
+            strategy_counts[s] = strategy_counts.get(s, 0) + 1
+        strat_str = "  ".join(f"{k}x{v}" for k, v in strategy_counts.items())
+        lines = ""
+        for e in watchlist[:3]:
+            sym = e.get("symbol") if isinstance(e, dict) else getattr(e, "symbol", "?")
+            gap = e.get("gap_pct", 0) if isinstance(e, dict) else getattr(e, "gap_pct", 0)
+            strat = e.get("strategy", "?") if isinstance(e, dict) else getattr(e, "strategy", "?")
+            lines += f"\n  * {sym}  {gap:+.2f}%  [{strat}]"
+        self._send(
+            f"<b>nexus_trader -- Morning Briefing</b>\n\n"
+            f"Market Bias : {bias}\n"
+            f"Setups      : {len(watchlist)} stocks  ({strat_str})\n"
+            f"Capital     : Rs{capital:,.0f}\n\n"
+            f"<b>Top Picks:</b>{lines}\n\n"
+            f"<i>Market opens 09:15 IST -- entries from 09:30</i>"
+        )
+
+    def send_daily_summary(self, total_trades: int, wins: int, net_pnl: float, capital: float) -> None:
+        losses = total_trades - wins
+        win_rate = (wins / total_trades * 100) if total_trades else 0
+        emoji = "PROFIT" if net_pnl >= 0 else "LOSS"
+        self._send(
+            f"<b>nexus_trader -- Daily Summary ({emoji})</b>\n"
+            f"Trades   : {total_trades}  (W:{wins} L:{losses})\n"
+            f"Win Rate : {win_rate:.0f}%\n"
+            f"Net P&L  : Rs{net_pnl:+,.2f}\n"
+            f"Capital  : Rs{capital:,.0f}"
+        )
+
+    def send_halted(self, daily_pnl: float, limit_pct: float) -> None:
+        self._send(
+            f"<b>TRADING HALTED -- Daily loss limit hit</b>\n"
+            f"Daily P&L : Rs{daily_pnl:+,.2f}\n"
+            f"Limit     : {limit_pct:.0%}"
+        )
+
+    def send_error(self, context: str, error: str) -> None:
+        self._send(f"<b>nexus_trader -- Error</b>\nContext : {context}\nError   : {str(error)[:300]}")
+
+
+# ---------------------------------------------------------------------------
+# TelegramCommandBot -- long-poll chatbot responding to user commands
+# ---------------------------------------------------------------------------
+
+class TelegramCommandBot:
     def __init__(self) -> None:
         self._token: str = getattr(config, "TELEGRAM_BOT_TOKEN", "")
         self._chat_id: str = getattr(config, "TELEGRAM_CHAT_ID", "")
-        self._enabled: bool = bool(
-            self._token
-            and self._chat_id
-            and self._token not in _PLACEHOLDER_TOKENS
-        )
+        self._enabled: bool = bool(self._token and self._chat_id and self._token not in _PLACEHOLDER_TOKENS)
         self._offset: int = 0
         self._thread: threading.Thread | None = None
         self._running: bool = False
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
-
     def start(self) -> None:
-        """Start the background polling thread (no-op if disabled)."""
         if not self._enabled:
             return
         self._running = True
-        self._thread = threading.Thread(
-            target=self._poll_loop, name="telegram-bot", daemon=True
-        )
+        self._thread = threading.Thread(target=self._poll_loop, name="telegram-bot", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         self._running = False
-
-    # ------------------------------------------------------------------
-    # Polling loop
-    # ------------------------------------------------------------------
 
     def _poll_loop(self) -> None:
         while self._running:
@@ -276,98 +197,65 @@ class TelegramCommandBot:
 
     def _get_updates(self) -> list[dict]:
         url = f"https://api.telegram.org/bot{self._token}/getUpdates"
-        resp = requests.get(
-            url,
-            params={"offset": self._offset, "timeout": 10},
-            timeout=15,
-        )
+        resp = requests.get(url, params={"offset": self._offset, "timeout": 10}, timeout=15)
         return resp.json().get("result", [])
-
-    # ------------------------------------------------------------------
-    # Routing
-    # ------------------------------------------------------------------
 
     def _handle_update(self, update: dict) -> None:
         msg = update.get("message", {})
         text = (msg.get("text") or "").strip()
         chat_id = str(msg.get("chat", {}).get("id", ""))
-
-        # Only respond to the configured chat
         if chat_id != str(self._chat_id):
             return
 
         cmd = text.split()[0].lower() if text else ""
-
         handlers = {
             "/status":    self._status_message,
             "/positions": self._positions_message,
             "/trades":    self._trades_message,
+            "/watchlist": self._watchlist_message,
+            "/weekly":    self._weekly_message,
+            "/strategy":  self._strategy_message,
             "/summary":   self._summary_message,
             "/help":      self._help_message,
         }
 
-        # Support commands without the leading slash
         if cmd and not cmd.startswith("/") and f"/{cmd}" in handlers:
             cmd = f"/{cmd}"
 
         if cmd in handlers:
             reply = handlers[cmd]()
         elif cmd.startswith("/"):
-            reply = "❓ Unknown command. Use /help to see available commands."
+            reply = "Unknown command. Use /help to see available commands."
         elif cmd in ("hi", "hello", "hey"):
-            reply = f"👋 Hello! I am the nexus_trader bot. Please use one of my commands:\n\n{self._help_message()}"
+            reply = f"Hello! I am the nexus_trader bot.\n\n{self._help_message()}"
         else:
-            return  # ignore other non-command messages
-
+            return
         self._send(reply)
-
-    # ------------------------------------------------------------------
-    # Telegram API send
-    # ------------------------------------------------------------------
 
     def _send(self, text: str) -> None:
         try:
             url = f"https://api.telegram.org/bot{self._token}/sendMessage"
-            requests.post(
-                url,
-                json={
-                    "chat_id": self._chat_id,
-                    "text": text,
-                    "parse_mode": "HTML",
-                },
-                timeout=10,
-            )
+            requests.post(url, json={"chat_id": self._chat_id, "text": text, "parse_mode": "HTML"}, timeout=10)
         except Exception:
             pass
-
-    # ------------------------------------------------------------------
-    # Command handlers
-    # ------------------------------------------------------------------
 
     def _status_message(self) -> str:
         conn = _get_conn()
         if conn is None:
-            return "⚠️ Portfolio database not found. Has the system run today?"
-
+            return "Portfolio database not found. Has the system run today?"
         try:
-            capital    = float(_meta(conn, "capital", "100000"))
-            daily_pnl  = float(_meta(conn, "daily_pnl", "0"))
+            capital = float(_meta(conn, "capital", "100000"))
+            daily_pnl = float(_meta(conn, "daily_pnl", "0"))
             trade_count = int(_meta(conn, "trade_count", "0"))
-            is_halted  = _meta(conn, "is_halted", "0") == "1"
-
-            pos_count = conn.execute(
-                "SELECT COUNT(*) FROM positions"
-            ).fetchone()[0]
-
-            pnl_emoji = "📈" if daily_pnl >= 0 else "📉"
-            halt_line = "\n⛔ <b>Trading HALTED</b> — daily loss limit hit." if is_halted else ""
-
+            is_halted = _meta(conn, "is_halted", "0") == "1"
+            pos_count = conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+            halt_line = "\nTRADING HALTED -- daily loss limit hit." if is_halted else ""
             return (
-                f"<b>🤖 nexus_trader Status</b>{halt_line}\n\n"
-                f"💰 Capital:         ₹{capital:,.2f}\n"
-                f"{pnl_emoji} Daily P&L:     ₹{daily_pnl:+,.2f}\n"
-                f"📊 Open Positions:  {pos_count}\n"
-                f"🔄 Trades Today:    {trade_count}"
+                f"<b>nexus_trader Status</b>{halt_line}\n\n"
+                f"Capital         : Rs{capital:,.2f}\n"
+                f"Daily P&L       : Rs{daily_pnl:+,.2f}\n"
+                f"Open Positions  : {pos_count}\n"
+                f"Trades Today    : {trade_count}"
             )
         finally:
             conn.close()
@@ -375,22 +263,17 @@ class TelegramCommandBot:
     def _positions_message(self) -> str:
         conn = _get_conn()
         if conn is None:
-            return "⚠️ Portfolio database not found."
-
+            return "Portfolio database not found."
         try:
-            rows = conn.execute(
-                "SELECT * FROM positions ORDER BY entry_time DESC"
-            ).fetchall()
-
+            rows = conn.execute("SELECT * FROM positions ORDER BY entry_time DESC").fetchall()
             if not rows:
-                return "📭 No open positions right now."
-
-            lines = ["<b>📊 Open Positions</b>\n"]
+                return "No open positions right now."
+            lines = ["<b>Open Positions</b>\n"]
             for r in rows:
                 lines.append(
-                    f"🔵 <b>{r['symbol']}</b>  [{r['strategy']}]\n"
-                    f"   Entry: ₹{r['entry_price']:.2f}  ×{r['qty']}\n"
-                    f"   SL: ₹{r['stop_loss']:.2f}  →  Target: ₹{r['target']:.2f}"
+                    f"<b>{r['symbol']}</b>  [{r['strategy']}]\n"
+                    f"   Entry: Rs{r['entry_price']:.2f}  x{r['qty']}\n"
+                    f"   SL: Rs{r['stop_loss']:.2f}  Target: Rs{r['target']:.2f}"
                 )
             return "\n\n".join(lines)
         finally:
@@ -399,36 +282,94 @@ class TelegramCommandBot:
     def _trades_message(self) -> str:
         conn = _get_conn()
         if conn is None:
-            return "⚠️ Portfolio database not found."
-
+            return "Portfolio database not found."
         try:
-            import datetime
-            import pytz
-            ist = pytz.timezone("Asia/Kolkata")
-            today_ist = datetime.datetime.now(ist).strftime("%Y-%m-%d")
-
+            today_ist = datetime.now(IST).strftime("%Y-%m-%d")
             rows = conn.execute(
-                "SELECT * FROM trades "
-                "WHERE date(exit_time) = ? "
-                "ORDER BY exit_time DESC LIMIT 15",
+                "SELECT * FROM trades WHERE date(exit_time) = ? ORDER BY exit_time DESC LIMIT 15",
                 (today_ist,)
             ).fetchall()
-
             if not rows:
-                return "📭 No completed trades today yet."
-
+                return "No completed trades today yet."
             total_pnl = sum(r["net_pnl"] for r in rows)
             wins = sum(1 for r in rows if r["net_pnl"] > 0)
-            lines = [
-                f"<b>🔄 Today's Trades</b>  "
-                f"({wins}W/{len(rows)-wins}L  |  ₹{total_pnl:+,.2f} net)\n"
-            ]
+            lines = [f"<b>Today's Trades</b>  ({wins}W/{len(rows)-wins}L  |  Rs{total_pnl:+,.2f} net)\n"]
             for r in rows:
-                emoji = "✅" if r["net_pnl"] > 0 else "❌"
+                tag = "WIN" if r["net_pnl"] > 0 else "LOSS"
                 lines.append(
-                    f"{emoji} <b>{r['symbol']}</b>  {r['exit_reason']}\n"
-                    f"   ₹{r['entry_price']:.2f} → ₹{r['exit_price']:.2f}  "
-                    f"×{r['qty']}  |  <b>₹{r['net_pnl']:+,.2f}</b>"
+                    f"[{tag}] <b>{r['symbol']}</b>  {r['exit_reason']}\n"
+                    f"   Rs{r['entry_price']:.2f} > Rs{r['exit_price']:.2f}  x{r['qty']}  |  <b>Rs{r['net_pnl']:+,.2f}</b>"
+                )
+            return "\n\n".join(lines)
+        finally:
+            conn.close()
+
+    def _watchlist_message(self) -> str:
+        conn = _get_conn()
+        if conn is None:
+            return "Portfolio database not found."
+        try:
+            rows = conn.execute("SELECT * FROM watchlist ORDER BY gap_pct DESC").fetchall()
+            if not rows:
+                return "No watchlist for today yet. Runs at 08:30 IST."
+            lines = ["<b>Today's Watchlist</b>\n"]
+            for r in rows:
+                lines.append(
+                    f"<b>{r['symbol']}</b>  [{r['strategy']}]\n"
+                    f"   Gap: {r['gap_pct']:+.2f}%  R:R: {r['rr_ratio']:.2f}\n"
+                    f"   Entry: Rs{r['entry_trigger']:.2f}  SL: Rs{r['stop_loss']:.2f}  T: Rs{r['target']:.2f}"
+                )
+            return "\n\n".join(lines)
+        finally:
+            conn.close()
+
+    def _weekly_message(self) -> str:
+        conn = _get_conn()
+        if conn is None:
+            return "Portfolio database not found."
+        try:
+            rows = conn.execute(
+                """SELECT DATE(exit_time) as day, COUNT(*) as trades,
+                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                          ROUND(SUM(net_pnl), 2) as net_pnl
+                   FROM trades WHERE DATE(exit_time) >= DATE('now', '-7 days')
+                   GROUP BY day ORDER BY day DESC"""
+            ).fetchall()
+            if not rows:
+                return "No trades in the last 7 days."
+            total_pnl = sum(r["net_pnl"] for r in rows)
+            lines = [f"<b>Weekly P&L (last 7 days)</b>\n"]
+            for r in rows:
+                wr = int(r["wins"] / r["trades"] * 100) if r["trades"] else 0
+                tag = "UP" if r["net_pnl"] >= 0 else "DN"
+                lines.append(f"[{tag}] <b>{r['day']}</b>  {r['trades']} trades  {wr}% WR  |  <b>Rs{r['net_pnl']:+,.2f}</b>")
+            lines.append(f"\n<b>Total: Rs{total_pnl:+,.2f}</b>")
+            return "\n".join(lines)
+        finally:
+            conn.close()
+
+    def _strategy_message(self) -> str:
+        conn = _get_conn()
+        if conn is None:
+            return "Portfolio database not found."
+        try:
+            rows = conn.execute(
+                """SELECT strategy, COUNT(*) as total,
+                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                          ROUND(SUM(net_pnl), 2) as net_pnl,
+                          ROUND(AVG(net_pnl), 2) as avg_pnl
+                   FROM trades GROUP BY strategy ORDER BY net_pnl DESC"""
+            ).fetchall()
+            if not rows:
+                return "No trade history yet."
+            lines = ["<b>Strategy Performance</b>\n"]
+            for r in rows:
+                losses = r["total"] - r["wins"]
+                wr = int(r["wins"] / r["total"] * 100) if r["total"] else 0
+                tag = "UP" if r["net_pnl"] >= 0 else "DN"
+                lines.append(
+                    f"[{tag}] <b>{r['strategy']}</b>  {r['wins']}W/{losses}L  {wr}% WR\n"
+                    f"   Net: Rs{r['net_pnl']:+,.2f}  Avg: Rs{r['avg_pnl']:+,.2f}"
                 )
             return "\n\n".join(lines)
         finally:
@@ -437,71 +378,59 @@ class TelegramCommandBot:
     def _summary_message(self) -> str:
         conn = _get_conn()
         if conn is None:
-            return "⚠️ Portfolio database not found."
-
+            return "Portfolio database not found."
         try:
-            row = conn.execute(
-                "SELECT * FROM daily_reviews ORDER BY review_date DESC LIMIT 1"
-            ).fetchone()
-
+            row = conn.execute("SELECT * FROM daily_reviews ORDER BY review_date DESC LIMIT 1").fetchone()
             if not row:
-                return "📭 No completed review found in database. Check back after 15:35 IST."
-
+                return "No completed review found. Check back after 15:35 IST."
             date_str = row["review_date"]
             verdict = row["session_verdict"]
-            winning = json.loads(row["winning_strategies"])
-            underperforming = json.loads(row["underperforming_strategies"])
+            summary = row["summary"]
             adjustments = json.loads(row["parameter_adjustments"])
             tomorrow_watch = json.loads(row["tomorrow_watch"])
-            summary = row["summary"]
-
-            # Convert YYYYMMDD to YYYY-MM-DD for matching trades exit_time
             formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-            
             trades_rows = conn.execute(
-                "SELECT net_pnl FROM trades WHERE date(exit_time) = ?",
-                (formatted_date,)
+                "SELECT net_pnl FROM trades WHERE date(exit_time) = ?", (formatted_date,)
             ).fetchall()
-            
             total_pnl = sum(t["net_pnl"] for t in trades_rows)
             wins = sum(1 for t in trades_rows if t["net_pnl"] > 0)
             trade_count = len(trades_rows)
-            win_rate = (wins / trade_count * 100) if trade_count else 0.0
-
-            pnl_emoji = "📗" if total_pnl >= 0 else "📕"
-
+            wr = (wins / trade_count * 100) if trade_count else 0
             rec_text = "\n".join(
-                f"  • {adj['param_name']}: {adj['current_value']} → {adj['suggested_value']} ({adj['reason']})"
-                for adj in adjustments[:4]
-            ) if adjustments else "  None"
-
+                f"  * {a['param_name']}: {a['current_value']} > {a['suggested_value']} ({a['reason']})"
+                for a in adjustments[:4]
+            ) or "  None"
             watch_text = ", ".join(tomorrow_watch) if tomorrow_watch else "None"
-
+            tag = "PROFIT" if total_pnl >= 0 else "LOSS"
             return (
-                f"<b>{pnl_emoji} Daily Summary — {date_str}</b>\n\n"
-                f"Trades: {trade_count}  |  Wins: {wins}  "
-                f"|  Win Rate: {win_rate:.0f}%\n"
-                f"Net P&L: <b>₹{total_pnl:+,.2f}</b>\n\n"
+                f"<b>Daily Summary [{tag}] -- {date_str}</b>\n\n"
+                f"Trades: {trade_count}  Wins: {wins}  WR: {wr:.0f}%\n"
+                f"Net P&L: <b>Rs{total_pnl:+,.2f}</b>\n\n"
                 f"<b>Verdict:</b> {verdict}\n\n"
-                f"<b>Claude's Assessment:</b>\n{summary}\n\n"
-                f"<b>Tomorrow's Watchlist:</b>\n{watch_text}\n\n"
+                f"<b>Summary:</b>\n{summary}\n\n"
+                f"<b>Watch Tomorrow:</b> {watch_text}\n\n"
                 f"<b>Recommendations:</b>\n{rec_text}"
             )
         except Exception as exc:
-            return f"⚠️ Error reading review: {exc}"
+            return f"Error reading review: {exc}"
         finally:
             conn.close()
 
     def _help_message(self) -> str:
         return (
-            "<b>🤖 nexus_trader Bot — Commands</b>\n\n"
-            "/status     — Capital, P&L, positions, halt state\n"
-            "/positions  — All open positions with SL &amp; target\n"
-            "/trades     — Today's completed trades with P&amp;L\n"
-            "/summary    — Latest Claude Sonnet end-of-day review\n"
-            "/help       — This message\n\n"
+            "<b>nexus_trader Bot -- Commands</b>\n\n"
+            "/status     -- Capital, P&L, positions, halt state\n"
+            "/positions  -- All open positions with SL and target\n"
+            "/trades     -- Today's completed trades with P&L\n"
+            "/watchlist  -- Today's pre-market watchlist\n"
+            "/weekly     -- Last 7 days P&L breakdown\n"
+            "/strategy   -- Win rate per strategy (all time)\n"
+            "/summary    -- Latest AI end-of-day review\n"
+            "/help       -- This message\n\n"
             "<i>Data is read live from the portfolio database.</i>"
         )
 
 
+# Module-level singletons
+notifier = TelegramNotifier()
 bot = TelegramCommandBot()

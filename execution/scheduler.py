@@ -154,6 +154,32 @@ class NexusTrader:
             self._portfolio.save_watchlist(self._watchlist)
 
     # ------------------------------------------------------------------
+    # Morning briefing  (08:45 IST)
+    # ------------------------------------------------------------------
+
+    def run_morning_briefing(self) -> None:
+        """Send Telegram briefing with today's watchlist and market bias."""
+        try:
+            bias = "UNKNOWN"
+            # Try to read bias from decision log or just use watchlist count
+            from data.market_data import MarketDataFetcher
+            fetcher = MarketDataFetcher()
+            nifty_df = fetcher._safe_fetch("^NSEI", period="2d", interval="1d")
+            if not nifty_df.empty and len(nifty_df) >= 2:
+                prev_close = float(nifty_df["Close"].iloc[-2])
+                last_close = float(nifty_df["Close"].iloc[-1])
+                chg = (last_close - prev_close) / prev_close * 100
+                bias = "BULLISH" if chg > 0.3 else "BEARISH" if chg < -0.3 else "NEUTRAL"
+
+            notifier.send_morning_briefing(
+                watchlist=self._watchlist,
+                bias=bias,
+                capital=self._portfolio.capital,
+            )
+        except Exception as exc:
+            logger.warning("Morning briefing failed: %s", exc)
+
+    # ------------------------------------------------------------------
     # Market session  (09:15 IST)
     # ------------------------------------------------------------------
 
@@ -239,53 +265,43 @@ class TradingScheduler:
     def _add_jobs(self) -> None:
         ist = IST
 
-        # 1. Pre-market scan at 08:30 IST, Mon-Fri
         self._scheduler.add_job(
             self._trader.run_pre_market_pipeline,
             CronTrigger(hour=8, minute=30, day_of_week="mon-fri", timezone=ist),
-            id="pre_market",
-            max_instances=1,
-            replace_existing=True,
+            id="pre_market", max_instances=1, replace_existing=True,
         )
 
-        # 2. Market session: every 60 s from 09:15 to 15:15, Mon-Fri
-        #    OrTrigger covers the full window in three CronTrigger slices
-        session_trigger = OrTrigger(
-            [
-                CronTrigger(
-                    hour=9, minute="15-59", day_of_week="mon-fri", timezone=ist
-                ),
-                CronTrigger(
-                    hour="10-14", minute="*", day_of_week="mon-fri", timezone=ist
-                ),
-                CronTrigger(
-                    hour=15, minute="0-15", day_of_week="mon-fri", timezone=ist
-                ),
-            ]
+        self._scheduler.add_job(
+            self._trader.run_morning_briefing,
+            CronTrigger(hour=8, minute=45, day_of_week="mon-fri", timezone=ist),
+            id="morning_briefing", max_instances=1, replace_existing=True,
         )
+
+        session_trigger = OrTrigger([
+            CronTrigger(hour=9, minute="15-59", day_of_week="mon-fri", timezone=ist),
+            CronTrigger(hour="10-14", minute="*", day_of_week="mon-fri", timezone=ist),
+            CronTrigger(hour=15, minute="0-15", day_of_week="mon-fri", timezone=ist),
+        ])
         self._scheduler.add_job(
             self._trader.run_market_session,
             session_trigger,
-            id="market_session",
-            max_instances=1,
-            replace_existing=True,
+            id="market_session", max_instances=1, replace_existing=True,
         )
 
-        # 3. Post-market review at 15:35 IST, Mon-Fri
         self._scheduler.add_job(
             self._trader.run_post_market_review,
             CronTrigger(hour=15, minute=35, day_of_week="mon-fri", timezone=ist),
-            id="post_market",
-            max_instances=1,
-            replace_existing=True,
+            id="post_market", max_instances=1, replace_existing=True,
         )
 
     def start(self) -> None:
         self._scheduler.start()
+        from utils.telegram import bot as telegram_bot
         telegram_bot.start()
-        logger.info("TradingScheduler started — IST timezone, Mon-Fri schedule")
+        logger.info("TradingScheduler started -- IST timezone, Mon-Fri schedule")
 
     def shutdown(self, wait: bool = True) -> None:
+        from utils.telegram import bot as telegram_bot
         telegram_bot.stop()
         self._scheduler.shutdown(wait=wait)
         logger.info("TradingScheduler stopped")

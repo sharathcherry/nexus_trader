@@ -280,9 +280,13 @@ class AgentI4:
                 )
                 continue
 
+            # Apply 0.15% slippage to simulate real NSE market-order fills
+            _SLIPPAGE_PCT = 0.0015
+            fill_price = round(current_price * (1 + _SLIPPAGE_PCT), 2)
+
             success = portfolio.buy(
                 sym,
-                current_price,
+                fill_price,
                 qty,
                 entry.stop_loss,
                 entry.target,
@@ -384,6 +388,37 @@ class AgentI4:
                 logger.info("Restored bought symbols: %s", self.bought_symbols)
         except Exception as e:
             logger.error("Failed to restore bought symbols state: %s", e)
+
+        # ------------------------------------------------------------------
+        # Nifty 50 index filter: if Nifty is down >0.5% at open, block
+        # all long strategies (GAP_AND_GO, ORB_BREAKOUT, VWAP_RECLAIM).
+        # Only GAP_FILL (mean-reversion) is allowed in bearish markets.
+        # ------------------------------------------------------------------
+        nifty_bearish = False
+        try:
+            import yfinance as _yf
+            nifty_df = _yf.download("^NSEI", period="2d", interval="1d",
+                                     progress=False, auto_adjust=False)
+            if nifty_df is not None and not nifty_df.empty and len(nifty_df) >= 2:
+                prev_close = float(nifty_df["Close"].iloc[-2])
+                last_close = float(nifty_df["Close"].iloc[-1])
+                nifty_chg = (last_close - prev_close) / prev_close * 100
+                if nifty_chg < -0.5:
+                    nifty_bearish = True
+                    blocked = [s for s, e in self.watchlist_map.items()
+                               if e.strategy in ("GAP_AND_GO", "ORB_BREAKOUT", "VWAP_RECLAIM")]
+                    for sym in blocked:
+                        del self.watchlist_map[sym]
+                    logger.warning(
+                        "NIFTY BEARISH FILTER: Nifty %.2f%% — blocked %d long setups, keeping GAP_FILL only",
+                        nifty_chg, len(blocked),
+                    )
+                    notifier.send_error(
+                        "Nifty Bearish Filter",
+                        f"Nifty down {nifty_chg:.2f}% — {len(blocked)} long setups blocked. Only GAP_FILL active.",
+                    )
+        except Exception as _nifty_exc:
+            logger.warning("Nifty filter check failed (non-fatal): %s", _nifty_exc)
 
         first_cycle = True
         while True:

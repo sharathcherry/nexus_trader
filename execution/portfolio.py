@@ -660,6 +660,73 @@ class PaperPortfolio:
         }
 
     # ------------------------------------------------------------------
+    # Watchlist persistence (restart resilience)
+    # ------------------------------------------------------------------
+
+    def save_watchlist(self, watchlist: list) -> None:
+        """Persist today's watchlist to DB so it survives a restart."""
+        with _get_conn() as conn:
+            conn.execute("DELETE FROM watchlist")
+            for entry in watchlist:
+                conn.execute(
+                    """INSERT OR REPLACE INTO watchlist
+                       (symbol, sector, gap_pct, gap_score, strategy,
+                        entry_trigger, stop_loss, target, rr_ratio, catalyst_type, atr)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        entry.symbol,
+                        entry.sector or "",
+                        entry.gap_pct,
+                        entry.gap_score,
+                        entry.strategy,
+                        entry.entry_trigger,
+                        entry.stop_loss,
+                        entry.target,
+                        entry.rr_ratio,
+                        entry.catalyst_type or "",
+                        entry.atr,
+                    ),
+                )
+        logger.info("Watchlist saved to DB: %d symbols", len(watchlist))
+
+    def load_watchlist(self) -> list:
+        """Restore watchlist from DB (returns list of dicts, not WatchlistEntry)."""
+        with _get_conn() as conn:
+            rows = conn.execute("SELECT * FROM watchlist").fetchall()
+        return [dict(r) for r in rows]
+
+    def get_weekly_pnl(self) -> list[dict]:
+        """Return net P&L grouped by date for the last 7 trading days."""
+        with _get_conn() as conn:
+            rows = conn.execute(
+                """SELECT DATE(exit_time) as day,
+                          COUNT(*) as trades,
+                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                          ROUND(SUM(net_pnl), 2) as net_pnl
+                   FROM trades
+                   WHERE DATE(exit_time) >= DATE('now', '-7 days')
+                   GROUP BY day
+                   ORDER BY day DESC"""
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_strategy_stats(self) -> list[dict]:
+        """Return win/loss/P&L breakdown per strategy across all trades."""
+        with _get_conn() as conn:
+            rows = conn.execute(
+                """SELECT strategy,
+                          COUNT(*) as total,
+                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                          SUM(CASE WHEN net_pnl <= 0 THEN 1 ELSE 0 END) as losses,
+                          ROUND(SUM(net_pnl), 2) as net_pnl,
+                          ROUND(AVG(net_pnl), 2) as avg_pnl
+                   FROM trades
+                   GROUP BY strategy
+                   ORDER BY net_pnl DESC"""
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
     # Force squareoff (D-14 — idempotent, flag set before any close)
     # ------------------------------------------------------------------
 
