@@ -428,7 +428,7 @@ footer {{ text-align:center; font-size:11px; color:var(--dim); font-family:var(-
   </div>
   <div class="live-badge">
     <span class="live-dot"></span>
-    LIVE · UPDATED {gen_at}
+    LIVE · UPDATED <span id="liveClock">{gen_at}</span>
   </div>
 </header>
 
@@ -709,6 +709,26 @@ function initCharts() {{
 
 // Init charts immediately for main panel
 initCharts();
+
+/* ──── Live clock ──── */
+const timeParts = "{gen_at}".split(":");
+let h = parseInt(timeParts[0], 10);
+let m = parseInt(timeParts[1], 10);
+let s = parseInt(timeParts[2], 10);
+
+setInterval(() => {{
+  s++;
+  if (s >= 60) {{ s = 0; m++; }}
+  if (m >= 60) {{ m = 0; h++; }}
+  if (h >= 24) {{ h = 0; }}
+  const hs = String(h).padStart(2, '0');
+  const ms = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  const liveClockEl = document.getElementById('liveClock');
+  if (liveClockEl) {{
+    liveClockEl.textContent = hs + ':' + ms + ':' + ss;
+  }}
+}}, 1000);
 </script>
 </body>
 </html>"""

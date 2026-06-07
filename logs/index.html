@@ -168,7 +168,7 @@ footer { text-align:center; font-size:11px; color:var(--dim); font-family:var(--
   </div>
   <div class="live-badge">
     <span class="live-dot"></span>
-    LIVE · UPDATED 21:14:43
+    LIVE · UPDATED <span id="liveClock">21:37:42</span>
   </div>
 </header>
 
@@ -200,7 +200,7 @@ footer { text-align:center; font-size:11px; color:var(--dim); font-family:var(--
   </div>
 
   <!-- 02 · LIVE POSITIONS — TABLE -->
-  <div class="section-label">LIVE POSITIONS — TABLE <span class="right">LAST PX 21:14:43</span></div>
+  <div class="section-label">LIVE POSITIONS — TABLE <span class="right">LAST PX 21:37:42</span></div>
   <div class="card" style="padding:0">
     <div class="tbl-wrap"><table>
       <thead><tr>
@@ -454,6 +454,26 @@ function initCharts() {
 
 // Init charts immediately for main panel
 initCharts();
+
+/* ──── Live clock ──── */
+const timeParts = "21:37:42".split(":");
+let h = parseInt(timeParts[0], 10);
+let m = parseInt(timeParts[1], 10);
+let s = parseInt(timeParts[2], 10);
+
+setInterval(() => {
+  s++;
+  if (s >= 60) { s = 0; m++; }
+  if (m >= 60) { m = 0; h++; }
+  if (h >= 24) { h = 0; }
+  const hs = String(h).padStart(2, '0');
+  const ms = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  const liveClockEl = document.getElementById('liveClock');
+  if (liveClockEl) {
+    liveClockEl.textContent = hs + ':' + ms + ':' + ss;
+  }
+}, 1000);
 </script>
 </body>
 </html>
