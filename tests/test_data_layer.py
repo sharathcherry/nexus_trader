@@ -44,12 +44,51 @@ class TestMarketDataFetcher:
         assert df.empty, f"Expected empty DataFrame for bad symbol, got {len(df)} rows"
 
     def test_prepost_false(self, fetcher):
-        """DATA-02: prepost=False is enforced on all yfinance calls (verified by code inspection)."""
-        pytest.fail("not implemented yet")
+        """DATA-02: prepost=False is enforced — verify by patching _safe_fetch and inspecting kwargs."""
+        import yfinance as yf
+        from unittest.mock import patch, MagicMock
+
+        captured_kwargs = []
+
+        original_safe_fetch = fetcher._safe_fetch
+
+        def capturing_safe_fetch(symbol, **kwargs):
+            captured_kwargs.append(kwargs)
+            # Return empty DF so no network call
+            return pd.DataFrame()
+
+        with patch.object(fetcher, "_safe_fetch", side_effect=capturing_safe_fetch):
+            fetcher.get_intraday_candles("RELIANCE.NS")
+            fetcher.get_previous_close("RELIANCE.NS")
+            fetcher.get_historical_data("RELIANCE.NS", period="5d")
+
+        for kwargs in captured_kwargs:
+            assert kwargs.get("prepost") is False, (
+                f"prepost=False not enforced — got prepost={kwargs.get('prepost')!r} "
+                f"in call with kwargs={kwargs}"
+            )
 
     def test_rate_limit_delay(self, fetcher):
-        """DATA-03: 0.2s sleep between sequential yfinance calls (verified by code inspection)."""
-        pytest.fail("not implemented yet")
+        """DATA-03: _safe_fetch calls time.sleep(0.2) before every yfinance call."""
+        import data.market_data as mdata
+        from unittest.mock import patch, MagicMock, call
+
+        sleep_calls = []
+
+        def track_sleep(seconds):
+            sleep_calls.append(seconds)
+
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = pd.DataFrame()
+
+        with patch.object(mdata.time, "sleep", side_effect=track_sleep):
+            with patch("data.market_data.yf.Ticker", return_value=mock_ticker):
+                fetcher.get_intraday_candles("RELIANCE.NS")
+                fetcher.get_previous_close("TCS.NS")
+
+        assert len(sleep_calls) >= 2, f"Expected at least 2 sleep calls, got {sleep_calls}"
+        for s in sleep_calls:
+            assert s == 0.2, f"Expected sleep(0.2), got sleep({s})"
 
     def test_scalar_returns_none_on_failure(self, fetcher):
         """DATA-04: get_previous_close returns None on bad symbol without raising."""
@@ -57,8 +96,58 @@ class TestMarketDataFetcher:
         assert result is None, f"Expected None for bad symbol, got {result}"
 
     def test_session_filter_09_15(self, fetcher):
-        """DATA-05: get_intraday_candles rows all start at or after 09:15 IST (live network — manual verify)."""
-        pytest.fail("not implemented yet")
+        """DATA-05: get_intraday_candles filters rows to >= 09:15 IST."""
+        import data.market_data as mdata
+        import pytz
+        import pandas as pd
+        from unittest.mock import patch, MagicMock
+
+        IST = pytz.timezone("Asia/Kolkata")
+
+        # Build a fake 5-min DataFrame with rows from 08:45 IST to 10:00 IST
+        # (simulating pre-session + session candles as yfinance would return them)
+        times_ist = pd.date_range(
+            start="2026-06-06 08:45:00",
+            end="2026-06-06 10:00:00",
+            freq="5min",
+            tz=IST,
+        )
+        # Convert to UTC as yfinance returns UTC timestamps
+        times_utc = times_ist.tz_convert("UTC")
+        fake_df = pd.DataFrame(
+            {
+                "Open":   [100.0] * len(times_utc),
+                "High":   [101.0] * len(times_utc),
+                "Low":    [99.0]  * len(times_utc),
+                "Close":  [100.5] * len(times_utc),
+                "Volume": [100_000] * len(times_utc),
+            },
+            index=times_utc,
+        )
+
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = fake_df
+
+        with patch("data.market_data.yf.Ticker", return_value=mock_ticker):
+            result = fetcher.get_intraday_candles("RELIANCE.NS")
+
+        assert not result.empty, "Expected non-empty DataFrame after filter"
+
+        # All rows must be at or after 09:15 IST
+        session_start_time = result.index[0].astimezone(IST)
+        assert session_start_time.hour > 9 or (
+            session_start_time.hour == 9 and session_start_time.minute >= 15
+        ), (
+            f"First row is before 09:15 IST: {session_start_time.strftime('%H:%M')}"
+        )
+
+        # The 08:45, 08:50 ... 09:10 rows should be filtered out
+        # The earliest remaining row should be 09:15
+        for ts in result.index:
+            ts_ist = ts.astimezone(IST)
+            assert ts_ist.hour > 9 or (ts_ist.hour == 9 and ts_ist.minute >= 15), (
+                f"Row at {ts_ist.strftime('%H:%M')} IST should have been filtered out"
+            )
 
     def test_global_indices_partial(self, fetcher, monkeypatch):
         """DATA-06: get_global_indices returns a dict (possibly partial) without raising."""

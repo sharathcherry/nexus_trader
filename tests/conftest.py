@@ -1,7 +1,32 @@
-import pytest
-import pandas as pd
+import os
+
 import numpy as np
-from data.market_data import MarketDataFetcher
+import pandas as pd
+import pytest
+
+# ---------------------------------------------------------------------------
+# Ensure fake API keys are present before any module-level Config() runs.
+# Uses setdefault so real keys in .env take precedence when running live.
+# ---------------------------------------------------------------------------
+os.environ.setdefault("GEMINI_API_KEY", "fake-gemini")
+os.environ.setdefault("ANTHROPIC_API_KEY", "fake-anthropic")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "fake-token")
+os.environ.setdefault("TELEGRAM_CHAT_ID", "fake-chat")
+
+from data.market_data import MarketDataFetcher  # noqa: E402 — after env vars
+
+# Import shared helpers so test files can use them, and expose as fixtures.
+from tests.helpers import make_candles, make_entry, mock_portfolio_factory  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# Pytest fixtures wrapping the helper functions
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def make_candles_fixture():
+    """Fixture that returns the make_candles helper function."""
+    return make_candles
 
 
 @pytest.fixture(scope="module")

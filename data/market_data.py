@@ -1,14 +1,14 @@
 """
-MarketDataFetcher — yfinance wrapper for nexus_trader.
+MarketDataFetcher -- yfinance wrapper for nexus_trader.
 
-All public methods return safe typed values on failure. No exceptions propagate to callers.
+All public methods return safe typed values on failure. No exceptions propagate.
 Error return contract:
-  - Scalar methods (get_previous_close, get_premarket_price, get_atr) → None on failure
-  - DataFrame methods (get_intraday_candles, get_historical_data) → pd.DataFrame() on failure
-  - Dict methods (get_global_indices) → {} on failure
+  - Scalar methods  -> None on failure
+  - DataFrame methods -> pd.DataFrame() on failure
+  - Dict methods    -> {} on failure
 
-Rate limiting: 0.2s time.sleep() before every yfinance call (DATA-03 / D-01).
-Session filtering: get_intraday_candles() returns rows from 09:15 IST onward only (D-05).
+Rate limiting: 0.2s time.sleep() before every yfinance call.
+Session filtering: get_intraday_candles() returns rows from 09:15 IST onward.
 """
 
 import time
@@ -25,88 +25,107 @@ IST = pytz.timezone("Asia/Kolkata")
 _RATE_LIMIT_DELAY = 0.2
 
 _GLOBAL_INDICES = {
-    "SP500": "^GSPC",
-    "NASDAQ": "^IXIC",
-    "NIKKEI": "^N225",
+    "SP500":    "^GSPC",
+    "NASDAQ":   "^IXIC",
+    "NIKKEI":   "^N225",
     "HANGSENG": "^HSI",
-    "CRUDE": "CL=F",
-    "GOLD": "GC=F",
-    "USDINR": "USDINR=X",
+    "CRUDE":    "CL=F",
+    "GOLD":     "GC=F",
+    "USDINR":   "USDINR=X",
 }
 
 
 class MarketDataFetcher:
     """
     yfinance wrapper providing OHLCV data for NSE stocks and global indices.
-
-    All methods are error-tolerant: they catch exceptions internally and return
-    safe failure values (None / empty DataFrame / empty dict) instead of raising.
+    All methods are error-tolerant: exceptions caught internally, safe values returned.
     """
 
     def _safe_fetch(self, symbol: str, **kwargs) -> pd.DataFrame:
         """
-        Internal helper: sleep → fetch → guard.
-
-        Sleeps 0.2s before every yfinance call to respect rate limits.
-        Returns empty pd.DataFrame() on any failure (empty response, 429, exception).
+        Internal helper: sleep -> fetch -> guard.
+        Sleeps 0.2s before every yfinance call (rate-limit guard).
+        Returns empty pd.DataFrame() on any failure.
         """
         time.sleep(_RATE_LIMIT_DELAY)
         try:
             df = yf.Ticker(symbol).history(**kwargs)
             if df is None or df.empty:
                 logger.warning(
-                    f"_safe_fetch({symbol}): empty response — possible 429 or delisted"
+                    "_safe_fetch(%s): empty response -- possible 429 or delisted", symbol
                 )
                 return pd.DataFrame()
             return df
-        except Exception as e:
-            logger.error(f"_safe_fetch({symbol}): {e}")
+        except Exception as exc:
+            logger.error("_safe_fetch(%s): %s", symbol, exc)
             return pd.DataFrame()
 
     def get_previous_close(self, symbol: str) -> float | None:
-        """
-        Return the previous trading day's close price for a symbol.
-
-        Returns None on failure (bad symbol, network error, insufficient data).
-        """
+        """Return the previous trading day's close price. None on failure."""
         try:
             df = self._safe_fetch(
                 symbol, period="5d", interval="1d", prepost=False, auto_adjust=True
             )
             if df.empty or len(df) < 2:
                 logger.warning(
-                    f"get_previous_close({symbol}): insufficient data (rows={len(df)})"
+                    "get_previous_close(%s): insufficient data (rows=%d)", symbol, len(df)
                 )
                 return None
             return float(df["Close"].iloc[-2])
-        except Exception as e:
-            logger.error(f"get_previous_close({symbol}): {e}")
+        except Exception as exc:
+            logger.error("get_previous_close(%s): %s", symbol, exc)
             return None
 
     def get_premarket_price(self, symbol: str) -> float | None:
         """
-        Return the most recent daily close as a premarket price proxy.
+        Return today's opening price as the pre-market price proxy.
 
-        Returns None on failure.
+        NSE has no true pre-market session accessible via yfinance. The best
+        free proxy is today's opening candle (09:15 IST), which reflects the
+        gap-open relative to yesterday's close.
+
+        Strategy:
+          1. Fetch today's 5-min intraday data.
+          2. Return the Open price of the first session candle (09:15 bar).
+          3. If intraday data is unavailable (called pre-09:15 or holiday),
+             fall back to the most recent daily close.
         """
         try:
-            df = self._safe_fetch(
+            df_5m = self._safe_fetch(
+                symbol, period="1d", interval="5m", prepost=False, auto_adjust=True
+            )
+            if not df_5m.empty:
+                if df_5m.index.tz is None:
+                    df_5m.index = df_5m.index.tz_localize("UTC")
+                df_5m.index = df_5m.index.tz_convert(IST)
+                session_mask = (df_5m.index.hour > 9) | (
+                    (df_5m.index.hour == 9) & (df_5m.index.minute >= 15)
+                )
+                session_df = df_5m[session_mask]
+                if not session_df.empty:
+                    return float(session_df["Open"].iloc[0])
+
+            # Fallback: most recent daily close
+            df_1d = self._safe_fetch(
                 symbol, period="2d", interval="1d", prepost=False, auto_adjust=True
             )
-            if df.empty:
-                logger.warning(f"get_premarket_price({symbol}): empty response")
-                return None
-            return float(df["Close"].iloc[-1])
-        except Exception as e:
-            logger.error(f"get_premarket_price({symbol}): {e}")
+            if not df_1d.empty:
+                logger.debug(
+                    "get_premarket_price(%s): intraday unavailable -- using daily close fallback",
+                    symbol,
+                )
+                return float(df_1d["Close"].iloc[-1])
+
+            logger.warning("get_premarket_price(%s): all sources empty", symbol)
+            return None
+        except Exception as exc:
+            logger.error("get_premarket_price(%s): %s", symbol, exc)
             return None
 
     def get_intraday_candles(self, symbol: str) -> pd.DataFrame:
         """
         Return today's intraday 5-min candles from 09:15 IST onward.
-
         Returns empty pd.DataFrame() on failure.
-        Columns: Open, High, Low, Close, Volume
         """
         try:
             df = self._safe_fetch(
@@ -115,7 +134,6 @@ class MarketDataFetcher:
             if df.empty:
                 return pd.DataFrame()
 
-            # Convert UTC index to IST and filter to session start (09:15 IST)
             if df.index.tz is None:
                 df.index = df.index.tz_localize("UTC")
             df.index = df.index.tz_convert(IST)
@@ -127,17 +145,12 @@ class MarketDataFetcher:
                 return pd.DataFrame()
 
             return df[["Open", "High", "Low", "Close", "Volume"]].copy()
-        except Exception as e:
-            logger.error(f"get_intraday_candles({symbol}): {e}")
+        except Exception as exc:
+            logger.error("get_intraday_candles(%s): %s", symbol, exc)
             return pd.DataFrame()
 
     def get_historical_data(self, symbol: str, period: str = "60d") -> pd.DataFrame:
-        """
-        Return daily OHLCV historical data for a symbol.
-
-        Returns empty pd.DataFrame() on failure.
-        Columns: Open, High, Low, Close, Volume
-        """
+        """Return daily OHLCV historical data. Returns empty DataFrame on failure."""
         try:
             df = self._safe_fetch(
                 symbol, period=period, interval="1d", prepost=False, auto_adjust=True
@@ -145,23 +158,21 @@ class MarketDataFetcher:
             if df.empty:
                 return pd.DataFrame()
             return df[["Open", "High", "Low", "Close", "Volume"]].copy()
-        except Exception as e:
-            logger.error(f"get_historical_data({symbol}): {e}")
+        except Exception as exc:
+            logger.error("get_historical_data(%s): %s", symbol, exc)
             return pd.DataFrame()
 
     def get_atr(self, symbol: str, period: int = 14) -> float | None:
         """
-        Fetch 30 days of daily data and compute ATR for a symbol.
-
-        Used at watchlist build time (pre-market, no live DataFrame available).
+        Fetch 30 days of daily data and compute ATR.
         Returns None if data is insufficient or on any failure.
-        Returns float on success.
         """
         try:
             df = self.get_historical_data(symbol, period="30d")
             if df.empty or len(df) < period + 1:
                 logger.warning(
-                    f"get_atr({symbol}): insufficient data (rows={len(df)}, need {period + 1})"
+                    "get_atr(%s): insufficient data (rows=%d, need %d)",
+                    symbol, len(df), period + 1,
                 )
                 return None
 
@@ -180,17 +191,14 @@ class MarketDataFetcher:
 
             atr_val = tr.rolling(period).mean().iloc[-1]
             return float(atr_val) if not pd.isna(atr_val) else None
-        except Exception as e:
-            logger.error(f"get_atr({symbol}): {e}")
+        except Exception as exc:
+            logger.error("get_atr(%s): %s", symbol, exc)
             return None
 
     def get_global_indices(self) -> dict[str, float]:
         """
-        Fetch latest close for all 7 global indices.
-
-        Returns a partial dict if some symbols fail — AgentI0 uses what's available.
-        Returns empty {} only if all 7 fail.
-        The outer method does not catch — only per-symbol try/except handles failures.
+        Fetch latest close for all global indices.
+        Returns partial dict if some fail. Returns {} only if all fail.
         """
         result: dict[str, float] = {}
         for name, symbol in _GLOBAL_INDICES.items():
@@ -201,11 +209,15 @@ class MarketDataFetcher:
                 if not df.empty:
                     result[name] = float(df["Close"].iloc[-1])
                 else:
-                    logger.warning(f"get_global_indices: {name} ({symbol}) returned empty")
-            except Exception as e:
-                logger.warning(f"get_global_indices: {name} ({symbol}) failed — {e}")
+                    logger.warning(
+                        "get_global_indices: %s (%s) returned empty", name, symbol
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "get_global_indices: %s (%s) failed -- %s", name, symbol, exc
+                )
         return result
 
 
-# Module-level startup log — fires once on import, warns all consumers of 15-min delay
-logger.info("yfinance NSE data is 15 minutes delayed — embedded in all trade records.")
+# Module-level startup log
+logger.info("yfinance NSE data is 15 minutes delayed -- embedded in all trade records.")

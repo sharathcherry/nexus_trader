@@ -1,0 +1,866 @@
+
+########################################################################
+# SESSION START  2026-06-07 08:41:49 IST
+########################################################################
+========================================================================
+[2026-06-07 08:41:49 IST] MARKET_BIAS
+  Bias determined : BULLISH
+  Global indices  :
+    SP500           5280.10
+    NASDAQ         18500.20
+    NIKKEI         38200.00
+    USDINR            83.50
+  AI reasoning    : strength=0.72, confidence=0.85. SP500 +0.9%, NASDAQ +1.1%
+========================================================================
+[2026-06-07 08:41:49 IST] SCAN_RESULT
+  Universe scanned  : 100 stocks
+  Candidates found  : 2
+  Filters applied   : gap_pct [1.5-8%], prev_volume >= 500k, price [50-5000], volume_ratio >= 1.2
+  Candidates        :
+    RELIANCE.NS           gap=+2.30%  prev_vol=1,200,000  score=5.520  premarket=Rs2850.00
+    TCS.NS                gap=+1.80%  prev_vol=  800,000  score=2.880  premarket=Rs3900.00
+========================================================================
+[2026-06-07 08:41:49 IST] WATCHLIST_ENTRY -- RELIANCE.NS
+  Sector          : Energy
+  Strategy        : ORB_BREAKOUT
+  Decision basis  : bias=BULLISH, gap=+2.30% (GAP-UP)
+  ATR             : Rs42.50
+  Entry trigger   : Rs2856.70
+  Stop loss       : Rs2795.30  (risk=Rs61.40)
+  Target          : Rs2943.50  (reward=Rs86.80)
+  R:R ratio       : 1.77
+  Reasoning       : gap=+2.30%, bias=BULLISH, abs_gap=2.30%
+========================================================================
+[2026-06-07 08:41:49 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : ORB_BREAKOUT
+  Trigger         : price Rs2856.70 crossed entry_trigger Rs2856.70
+  Entry price     : Rs2856.70
+  Qty             : 7 shares
+  Position value  : Rs19,996.90
+  Stop loss       : Rs2795.30
+  Target          : Rs2943.50
+  R:R ratio       : 1.77
+  Max risk        : Rs429.80
+  Max reward      : Rs607.60
+  Gap context     : +2.30%
+  Market bias     : BULLISH
+========================================================================
+[2026-06-07 08:41:49 IST] SELL_DECISION -- RELIANCE.NS  [PROFIT]
+  Exit reason     : TARGET_HIT
+  Strategy        : ORB_BREAKOUT
+  Entry price     : Rs2856.70
+  Exit price      : Rs2943.50
+  Move            : +3.04%
+  Qty             : 7 shares
+  Gross P&L       : Rs+606.60
+  Brokerage       : Rs17.20
+  Net P&L         : Rs+589.40
+  Hold time       : -50 min
+
+########################################################################
+# SESSION END    2026-06-07 08:41:49 IST
+# Total trades   1
+# Daily P&L      Rs+589.40  [PROFIT]
+########################################################################
+
+========================================================================
+[2026-06-07 08:42:20 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 938
+  Verdict         : PROFITABLE
+  Winning strats  : ORB_BREAKOUT
+  Underperforming : GAP_AND_GO
+  Tomorrow watch  : RELIANCE.NS, INFY.NS, HCLTECH.NS, LT.NS, ICICIBANK.NS
+
+  SUMMARY:
+    Today's session was profitable with one winning trade in RELIANCE.NS
+    using the ORB_BREAKOUT strategy and one losing trade in TCS.NS using
+    the GAP_AND_GO strategy. To maintain profitability, it is suggested
+    to reduce the risk per trade and increase the minimum risk reward.
+
+  PARAMETER ADJUSTMENTS:
+    RISK_PER_TRADE_PCT         1.0 -> 0.9  (reduce risk to maintain profitability)
+    MIN_RISK_REWARD            1.5 -> 1.6  (increase minimum risk reward to filter out low pro)
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {
+    "session_verdict": "PROFITABLE",
+     "winning_strategies": ["ORB_BREAKOUT"],
+     "underperforming_strategies": ["GAP_AND_GO"],
+     "parameter_adjustments": [
+         {"param_name": "RISK_PER_TRADE_PCT", "current_value": 1.0, "suggested_value": 0.9, "reason": "reduce risk to maintain profitability"},
+         {"param_name": "MIN_RISK_REWARD", "current_value": 1.5, "suggested_value": 1.6, "reason": "increase minimum risk reward to filter out low probability trades"}
+     ],
+     "tomorrow_watch": ["RELIANCE.NS", "INFY.NS", "HCLTECH.NS", "LT.NS", "ICICIBANK.NS"],
+     "summary": "Today's session was profitable with one winning trade in RELIANCE.NS using the ORB_BREAKOUT strategy and one losing trade in TCS.NS using the GAP_AND_GO strategy. To maintain profitability, it is suggested to reduce the risk per trade and increase the minimum risk reward."
+  }
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:42:27 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:42:27 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:42:27 IST] BUY_DECISION -- SYM.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1480.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1480.00
+  Qty             : 1 shares
+  Position value  : Rs1,480.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 2.00
+  Max risk        : Rs15.00
+  Max reward      : Rs30.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:42:27 IST] BUY_DECISION -- SYM.NS
+  Strategy        : ORB_BREAKOUT
+  Trigger         : price Rs3500.00 crossed entry_trigger Rs3500.00
+  Entry price     : Rs3500.00
+  Qty             : 1 shares
+  Position value  : Rs3,500.00
+  Stop loss       : Rs3450.00
+  Target          : Rs3600.00
+  R:R ratio       : 2.00
+  Max risk        : Rs50.00
+  Max reward      : Rs100.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:42:27 IST] BUY_DECISION -- SYM.NS
+  Strategy        : VWAP_RECLAIM
+  Trigger         : price Rs2000.00 crossed entry_trigger Rs2000.00
+  Entry price     : Rs2000.00
+  Qty             : 1 shares
+  Position value  : Rs2,000.00
+  Stop loss       : Rs1970.00
+  Target          : Rs2060.00
+  R:R ratio       : 2.00
+  Max risk        : Rs30.00
+  Max reward      : Rs60.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:42:27 IST] BUY_DECISION -- SYM.NS
+  Strategy        : GAP_FILL
+  Trigger         : price Rs1450.00 crossed entry_trigger Rs1450.00
+  Entry price     : Rs1450.00
+  Qty             : 1 shares
+  Position value  : Rs1,450.00
+  Stop loss       : Rs1430.00
+  Target          : Rs1410.00
+  R:R ratio       : -2.00
+  Max risk        : Rs20.00
+  Max reward      : Rs-40.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:42:27 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:42:27 IST] SELL_DECISION -- RELIANCE.NS  [LOSS]
+  Exit reason     : SL_HIT
+  Strategy        : GAP_AND_GO
+  Entry price     : Rs1480.00
+  Exit price      : Rs1460.00
+  Move            : -1.35%
+  Qty             : 5 shares
+  Gross P&L       : Rs-100.00
+  Brokerage       : Rs0.00
+  Net P&L         : Rs-100.00
+  Hold time       : 1062 min
+========================================================================
+[2026-06-07 08:42:27 IST] SELL_DECISION -- RELIANCE.NS  [PROFIT]
+  Exit reason     : TARGET_HIT
+  Strategy        : GAP_AND_GO
+  Entry price     : Rs1480.00
+  Exit price      : Rs1515.00
+  Move            : +2.36%
+  Qty             : 5 shares
+  Gross P&L       : Rs+175.00
+  Brokerage       : Rs0.00
+  Net P&L         : Rs+175.00
+  Hold time       : 1062 min
+========================================================================
+[2026-06-07 08:42:27 IST] PARTIAL_EXIT -- TEST.NS
+  Exit price      : Rs1496.00
+  Qty exited      : 5 shares
+  Qty remaining   : 5 shares
+  P&L on exit     : Rs+80.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:42:27 IST] PARTIAL_EXIT -- TEST.NS
+  Exit price      : Rs1496.00
+  Qty exited      : 5 shares
+  Qty remaining   : 5 shares
+  P&L on exit     : Rs+80.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:42:27 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1505.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+50.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:42:27 IST] SL_UPDATE -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Current price   : Rs1505.00
+  Old stop loss   : Rs1465.00
+  New stop loss   : Rs1490.00  (+Rs25.00)
+  Reason          : price Rs1505.00 >= entry+ATR Rs1500.00; trail at 0.75xATR
+========================================================================
+[2026-06-07 08:42:27 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1498.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+36.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:42:27 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1505.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+50.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:42:27 IST] SL_UPDATE -- ORB.NS
+  Strategy        : ORB_BREAKOUT
+  Current price   : Rs1490.00
+  Old stop loss   : Rs1465.00
+  New stop loss   : Rs1480.00  (+Rs15.00)
+  Reason          : partial exit done; moved SL to breakeven (entry price)
+========================================================================
+[2026-06-07 08:43:40 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:43:46 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:44:15 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:44:43 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:44:43 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:45:13 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:45:13 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:45:13 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:45:46 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:45:46 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:45:46 IST] BUY_DECISION -- SYM.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1480.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1480.00
+  Qty             : 1 shares
+  Position value  : Rs1,480.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 2.00
+  Max risk        : Rs15.00
+  Max reward      : Rs30.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:45:46 IST] BUY_DECISION -- SYM.NS
+  Strategy        : ORB_BREAKOUT
+  Trigger         : price Rs3500.00 crossed entry_trigger Rs3500.00
+  Entry price     : Rs3500.00
+  Qty             : 1 shares
+  Position value  : Rs3,500.00
+  Stop loss       : Rs3450.00
+  Target          : Rs3600.00
+  R:R ratio       : 2.00
+  Max risk        : Rs50.00
+  Max reward      : Rs100.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:45:46 IST] BUY_DECISION -- SYM.NS
+  Strategy        : VWAP_RECLAIM
+  Trigger         : price Rs2000.00 crossed entry_trigger Rs2000.00
+  Entry price     : Rs2000.00
+  Qty             : 1 shares
+  Position value  : Rs2,000.00
+  Stop loss       : Rs1970.00
+  Target          : Rs2060.00
+  R:R ratio       : 2.00
+  Max risk        : Rs30.00
+  Max reward      : Rs60.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:45:46 IST] BUY_DECISION -- SYM.NS
+  Strategy        : GAP_FILL
+  Trigger         : price Rs1450.00 crossed entry_trigger Rs1450.00
+  Entry price     : Rs1450.00
+  Qty             : 1 shares
+  Position value  : Rs1,450.00
+  Stop loss       : Rs1430.00
+  Target          : Rs1410.00
+  R:R ratio       : -2.00
+  Max risk        : Rs20.00
+  Max reward      : Rs-40.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:45:46 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:45:46 IST] SELL_DECISION -- RELIANCE.NS  [LOSS]
+  Exit reason     : SL_HIT
+  Strategy        : GAP_AND_GO
+  Entry price     : Rs1480.00
+  Exit price      : Rs1460.00
+  Move            : -1.35%
+  Qty             : 5 shares
+  Gross P&L       : Rs-100.00
+  Brokerage       : Rs0.00
+  Net P&L         : Rs-100.00
+  Hold time       : 1065 min
+========================================================================
+[2026-06-07 08:45:46 IST] SELL_DECISION -- RELIANCE.NS  [PROFIT]
+  Exit reason     : TARGET_HIT
+  Strategy        : GAP_AND_GO
+  Entry price     : Rs1480.00
+  Exit price      : Rs1515.00
+  Move            : +2.36%
+  Qty             : 5 shares
+  Gross P&L       : Rs+175.00
+  Brokerage       : Rs0.00
+  Net P&L         : Rs+175.00
+  Hold time       : 1065 min
+========================================================================
+[2026-06-07 08:45:46 IST] PARTIAL_EXIT -- TEST.NS
+  Exit price      : Rs1496.00
+  Qty exited      : 5 shares
+  Qty remaining   : 5 shares
+  P&L on exit     : Rs+80.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:45:46 IST] PARTIAL_EXIT -- TEST.NS
+  Exit price      : Rs1496.00
+  Qty exited      : 5 shares
+  Qty remaining   : 5 shares
+  P&L on exit     : Rs+80.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:45:46 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1505.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+50.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:45:46 IST] SL_UPDATE -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Current price   : Rs1505.00
+  Old stop loss   : Rs1465.00
+  New stop loss   : Rs1490.00  (+Rs25.00)
+  Reason          : price Rs1505.00 >= entry+ATR Rs1500.00; trail at 0.75xATR
+========================================================================
+[2026-06-07 08:45:46 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1498.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+36.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:45:46 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1505.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+50.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:45:46 IST] SL_UPDATE -- ORB.NS
+  Strategy        : ORB_BREAKOUT
+  Current price   : Rs1490.00
+  Old stop loss   : Rs1465.00
+  New stop loss   : Rs1480.00  (+Rs15.00)
+  Reason          : partial exit done; moved SL to breakeven (entry price)
+========================================================================
+[2026-06-07 08:45:47 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:45:48 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:45:48 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:46:04 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:46:23 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:46:23 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:46:23 IST] BUY_DECISION -- SYM.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1480.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1480.00
+  Qty             : 1 shares
+  Position value  : Rs1,480.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 2.00
+  Max risk        : Rs15.00
+  Max reward      : Rs30.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:46:23 IST] BUY_DECISION -- SYM.NS
+  Strategy        : ORB_BREAKOUT
+  Trigger         : price Rs3500.00 crossed entry_trigger Rs3500.00
+  Entry price     : Rs3500.00
+  Qty             : 1 shares
+  Position value  : Rs3,500.00
+  Stop loss       : Rs3450.00
+  Target          : Rs3600.00
+  R:R ratio       : 2.00
+  Max risk        : Rs50.00
+  Max reward      : Rs100.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:46:23 IST] BUY_DECISION -- SYM.NS
+  Strategy        : VWAP_RECLAIM
+  Trigger         : price Rs2000.00 crossed entry_trigger Rs2000.00
+  Entry price     : Rs2000.00
+  Qty             : 1 shares
+  Position value  : Rs2,000.00
+  Stop loss       : Rs1970.00
+  Target          : Rs2060.00
+  R:R ratio       : 2.00
+  Max risk        : Rs30.00
+  Max reward      : Rs60.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:46:23 IST] BUY_DECISION -- SYM.NS
+  Strategy        : GAP_FILL
+  Trigger         : price Rs1450.00 crossed entry_trigger Rs1450.00
+  Entry price     : Rs1450.00
+  Qty             : 1 shares
+  Position value  : Rs1,450.00
+  Stop loss       : Rs1430.00
+  Target          : Rs1410.00
+  R:R ratio       : -2.00
+  Max risk        : Rs20.00
+  Max reward      : Rs-40.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:46:23 IST] BUY_DECISION -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Trigger         : price Rs1490.00 crossed entry_trigger Rs1480.00
+  Entry price     : Rs1490.00
+  Qty             : 1 shares
+  Position value  : Rs1,490.00
+  Stop loss       : Rs1465.00
+  Target          : Rs1510.00
+  R:R ratio       : 0.80
+  Max risk        : Rs25.00
+  Max reward      : Rs20.00
+  Gap context     : +2.00%
+  Market bias     : UNKNOWN
+========================================================================
+[2026-06-07 08:46:23 IST] SELL_DECISION -- RELIANCE.NS  [LOSS]
+  Exit reason     : SL_HIT
+  Strategy        : GAP_AND_GO
+  Entry price     : Rs1480.00
+  Exit price      : Rs1460.00
+  Move            : -1.35%
+  Qty             : 5 shares
+  Gross P&L       : Rs-100.00
+  Brokerage       : Rs0.00
+  Net P&L         : Rs-100.00
+  Hold time       : 1066 min
+========================================================================
+[2026-06-07 08:46:23 IST] SELL_DECISION -- RELIANCE.NS  [PROFIT]
+  Exit reason     : TARGET_HIT
+  Strategy        : GAP_AND_GO
+  Entry price     : Rs1480.00
+  Exit price      : Rs1515.00
+  Move            : +2.36%
+  Qty             : 5 shares
+  Gross P&L       : Rs+175.00
+  Brokerage       : Rs0.00
+  Net P&L         : Rs+175.00
+  Hold time       : 1066 min
+========================================================================
+[2026-06-07 08:46:23 IST] PARTIAL_EXIT -- TEST.NS
+  Exit price      : Rs1496.00
+  Qty exited      : 5 shares
+  Qty remaining   : 5 shares
+  P&L on exit     : Rs+80.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:46:23 IST] PARTIAL_EXIT -- TEST.NS
+  Exit price      : Rs1496.00
+  Qty exited      : 5 shares
+  Qty remaining   : 5 shares
+  P&L on exit     : Rs+80.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:46:23 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1505.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+50.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:46:23 IST] SL_UPDATE -- RELIANCE.NS
+  Strategy        : GAP_AND_GO
+  Current price   : Rs1505.00
+  Old stop loss   : Rs1465.00
+  New stop loss   : Rs1490.00  (+Rs25.00)
+  Reason          : price Rs1505.00 >= entry+ATR Rs1500.00; trail at 0.75xATR
+========================================================================
+[2026-06-07 08:46:23 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1498.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+36.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:46:23 IST] PARTIAL_EXIT -- RELIANCE.NS
+  Exit price      : Rs1505.00
+  Qty exited      : 2 shares
+  Qty remaining   : 3 shares
+  P&L on exit     : Rs+50.00
+  Reason          : 1:1 R:R lock-in reached
+========================================================================
+[2026-06-07 08:46:23 IST] SL_UPDATE -- ORB.NS
+  Strategy        : ORB_BREAKOUT
+  Current price   : Rs1490.00
+  Old stop loss   : Rs1465.00
+  New stop loss   : Rs1480.00  (+Rs15.00)
+  Reason          : partial exit done; moved SL to breakeven (entry price)
+========================================================================
+[2026-06-07 08:46:23 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:46:23 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------
+========================================================================
+[2026-06-07 08:46:23 IST] REVIEW_COMPLETE
+  Model           : llama-3.3-70b-versatile
+  Tokens used     : 700
+  Verdict         : LOSS
+  Winning strats  : GAP_AND_GO
+  Underperforming : ORB_BREAKOUT
+  Tomorrow watch  : RELIANCE.NS, INFY.NS
+
+  SUMMARY:
+    Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop
+    loss.
+
+  RAW AI OUTPUT:
+  --------------------------------------------------------------------
+  {"session_verdict": "LOSS", "winning_strategies": ["GAP_AND_GO"], "underperforming_strategies": ["ORB_BREAKOUT"], "parameter_adjustments": [], "tomorrow_watch": ["RELIANCE.NS", "INFY.NS"], "summary": "Mixed day: GAP_AND_GO delivered a winner but ORB_BREAKOUT hit stop loss."}
+  --------------------------------------------------------------------

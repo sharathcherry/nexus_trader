@@ -7,18 +7,17 @@ numpy>=1.24
 APScheduler==3.10.4
 
 # AI SDKs
-anthropic>=0.40.0
+groq>=0.9.0
 google-genai>=2.0.0
 
-# Technical Analysis (inline pandas — no ta library)
-
-# Backtesting — pybroker>=1.0.0 (published as lib-pybroker on PyPI)
-lib-pybroker>=1.0.0
+# Technical Analysis (inline pandas -- no ta library to avoid pandas 2.x compat issues)
 
 # Data processing / output / logging
 colorlog>=6.7
 tabulate>=0.9
+requests>=2.31
 
 # Environment
 python-dotenv>=1.0
 pytz>=2024.1
+pydantic>=2.0

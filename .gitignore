@@ -1,11 +1,39 @@
+# Environment & secrets
 .env
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-logs/*.log
+*.pyd
 *.egg-info/
-.pytest_cache/
 dist/
 build/
-.venv/
+.eggs/
+
+# Virtual environments
 venv/
+.venv/
+env/
+
+# Database (runtime state -- never commit)
+execution/portfolio.db
+execution/portfolio.db-wal
+execution/portfolio.db-shm
+
+# Logs (runtime output -- never commit)
+logs/*.log
+logs/performance/
+logs/backtest/
+
+# Dashboard (generated)
+logs/dashboard.html
+dashboard.html
+
+# pytest
+.pytest_cache/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db

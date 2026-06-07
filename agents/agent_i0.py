@@ -24,6 +24,7 @@ from data.market_data import MarketDataFetcher
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+from utils.decision_logger import dlog
 IST = pytz.timezone("Asia/Kolkata")
 
 # Module-level Gemini client — created once, reused across calls (D-01a)
@@ -103,7 +104,7 @@ Be conservative. If global cues are mixed, lean towards NEUTRAL.
 """
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -117,6 +118,11 @@ Be conservative. If global cues are mixed, lean towards NEUTRAL.
 
     logger.info(
         f"Market bias: {result.bias} (strength={result.bias_strength:.2f}, confidence={result.confidence:.2f})"
+    )
+    dlog.market_bias(
+        bias=result.bias,
+        indices=indices_data,
+        reasoning=f"strength={result.bias_strength:.2f}, confidence={result.confidence:.2f}. {getattr(result, 'key_factors', '')}",
     )
     return result
 

@@ -28,10 +28,27 @@ DB_PATH = Path("execution/portfolio.db")
 
 
 def _get_conn() -> sqlite3.Connection:
-    """Return a SQLite connection with WAL mode, Row factory, and foreign keys."""
-    conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+    """Return a SQLite connection with WAL mode, Row factory, and foreign keys.
+
+    check_same_thread=False is safe here because every caller wraps the
+    connection in a context manager (with _get_conn() as conn:) so each
+    logical operation gets its own short-lived connection.
+
+    busy_timeout=5000 ms: Telegram bot polling and the scheduler both read the
+    DB concurrently. WAL allows one writer + many readers, but a writer still
+    briefly blocks readers on the WAL lock. 5s timeout prevents SQLITE_BUSY
+    errors during the short write window.
+    """
+    conn = sqlite3.connect(
+        DB_PATH,
+        detect_types=sqlite3.PARSE_DECLTYPES,
+        check_same_thread=False,
+        timeout=5.0,
+    )
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")   # safe with WAL; faster than FULL
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -275,8 +292,26 @@ class PaperPortfolio:
 
         # Guard: already holding
         if symbol in open_symbols:
-            logger.warning("BUY REJECTED %s — Already holding this symbol", symbol)
+            logger.warning("BUY REJECTED %s -- Already holding this symbol", symbol)
             return False
+
+        # Guard: sector concentration (max MAX_POSITIONS_PER_SECTOR per sector)
+        try:
+            from data.universe import get_symbol_sector
+            sector = get_symbol_sector(symbol)
+            if sector:
+                sector_count = sum(
+                    1 for pos in open_positions
+                    if get_symbol_sector(pos["symbol"]) == sector
+                )
+                if sector_count >= config.MAX_POSITIONS_PER_SECTOR:
+                    logger.warning(
+                        "BUY REJECTED %s -- Sector concentration limit (%d/%d in %s)",
+                        symbol, sector_count, config.MAX_POSITIONS_PER_SECTOR, sector,
+                    )
+                    return False
+        except Exception:
+            pass  # sector guard is best-effort; never block a trade on lookup failure
 
         entry_time = self._now_ist_str()
         cost = entry_price * qty

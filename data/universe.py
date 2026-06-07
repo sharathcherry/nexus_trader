@@ -129,3 +129,14 @@ _NSE_UNIVERSE = [
 def get_nse_universe() -> list[dict]:
     """Return the Nifty 100 universe as a list of dicts with 'symbol' and 'sector' keys."""
     return _NSE_UNIVERSE
+
+
+# Build a fast O(1) symbol → sector lookup map at import time
+_SYMBOL_SECTOR_MAP: dict[str, str] = {
+    stock["symbol"]: stock["sector"] for stock in _NSE_UNIVERSE
+}
+
+
+def get_symbol_sector(symbol: str) -> str | None:
+    """Return the sector for a symbol, or None if not found in the universe."""
+    return _SYMBOL_SECTOR_MAP.get(symbol)

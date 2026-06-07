@@ -45,7 +45,10 @@ class OrderManager:
 
     def calculate_quantity(self, entry_price: float, stop_loss: float) -> int:
         """
-        Size position by 1% risk per trade, capped at 10% of capital.
+        Size position by 1% risk per trade, capped at MAX_POSITION_PCT of capital.
+
+        With MAX_POSITION_PCT=20% and MAX_OPEN_POSITIONS=5, the system can
+        deploy the full Rs1,00,000 capital across 5 positions (Rs20,000 each).
 
         Args:
             entry_price: Proposed entry price.
@@ -61,7 +64,7 @@ class OrderManager:
             return 0
 
         qty = int(risk_amount / risk_per_share)
-        max_qty = int((config.CAPITAL * 0.10) / entry_price)  # 10% capital cap
+        max_qty = int((config.CAPITAL * config.MAX_POSITION_PCT) / entry_price)  # Rs20,000 cap per position
         return min(qty, max_qty)
 
     # ------------------------------------------------------------------
