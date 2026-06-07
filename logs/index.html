@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="60">
 <title>nexus_trader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -168,7 +167,7 @@ footer { text-align:center; font-size:11px; color:var(--dim); font-family:var(--
   </div>
   <div class="live-badge">
     <span class="live-dot"></span>
-    LIVE · UPDATED <span id="liveClock">21:40:47</span>
+    LIVE · UPDATED <span id="liveClock">22:09:10</span>
   </div>
 </header>
 
@@ -200,7 +199,7 @@ footer { text-align:center; font-size:11px; color:var(--dim); font-family:var(--
   </div>
 
   <!-- 02 · LIVE POSITIONS — TABLE -->
-  <div class="section-label">LIVE POSITIONS — TABLE <span class="right">LAST PX 21:40:47</span></div>
+  <div class="section-label">LIVE POSITIONS — TABLE <span class="right">LAST PX 22:09:10</span></div>
   <div class="card" style="padding:0">
     <div class="tbl-wrap"><table>
       <thead><tr>
@@ -456,7 +455,7 @@ function initCharts() {
 initCharts();
 
 /* ──── Live clock ──── */
-const timeParts = "21:40:47".split(":");
+const timeParts = "22:09:10".split(":");
 let h = parseInt(timeParts[0], 10);
 let m = parseInt(timeParts[1], 10);
 let s = parseInt(timeParts[2], 10);
@@ -474,6 +473,94 @@ setInterval(() => {
     liveClockEl.textContent = hs + ':' + ms + ':' + ss;
   }
 }, 1000);
+
+/* ──── Dynamic update loop (every 3 seconds) ──── */
+async function updateLiveDashboard() {
+  try {
+    const response = await fetch('/api/live-html');
+    if (!response.ok) return;
+    const data = await response.json();
+    
+    // Update KPI strip values
+    const kpis = document.querySelectorAll('.kpi-strip .kpi');
+    if (kpis.length === 8 && data.capital) {
+      kpis[0].querySelector('.value').textContent = data.capital;
+      
+      const pnlVal = kpis[1].querySelector('.value');
+      pnlVal.textContent = data.daily_pnl;
+      pnlVal.className = 'value ' + data.dpnl_cls;
+      
+      kpis[2].querySelector('.value').textContent = data.trades;
+      kpis[3].querySelector('.value').textContent = data.open;
+      
+      const allTimeVal = kpis[4].querySelector('.value');
+      allTimeVal.textContent = data.all_time;
+      allTimeVal.className = 'value ' + data.alltime_cls;
+      
+      kpis[5].querySelector('.value').textContent = data.win_rate;
+      kpis[6].querySelector('.value').textContent = data.profit_factor;
+      kpis[7].querySelector('.value').textContent = data.avg_rr;
+    }
+    
+    // Update Live Positions Table body
+    const posTbody = document.querySelector('#panel-main table tbody');
+    if (posTbody && data.positions_html) {
+      posTbody.innerHTML = data.positions_html;
+    }
+    
+    // Update Trade History Table body (second table in panel-main)
+    const tables = document.querySelectorAll('#panel-main table');
+    if (tables.length >= 2 && data.trades_html) {
+      tables[1].querySelector('tbody').innerHTML = data.trades_html;
+    }
+    
+    // Update Trade Ledger Table body
+    const ledgerTbody = document.querySelector('#ledger-table tbody');
+    if (ledgerTbody && data.ledger_html) {
+      ledgerTbody.innerHTML = data.ledger_html;
+      // Re-trigger filtering on the new rows if a filter is active
+      const activeFilterBtn = document.querySelector('.filters .fbtn.active');
+      if (activeFilterBtn) {
+        const onclickText = activeFilterBtn.getAttribute('onclick') || '';
+        const modeMatch = onclickText.match(/filterTrades\('([^']+)'/);
+        if (modeMatch) {
+          const mode = modeMatch[1];
+          document.querySelectorAll('#ledger-table tbody tr').forEach(tr => {
+            const trPnl = parseFloat(tr.dataset.pnl || '0');
+            if (mode === 'all') tr.style.display = '';
+            else if (mode === 'winners') tr.style.display = trPnl > 0 ? '' : 'none';
+            else if (mode === 'losers') tr.style.display = trPnl <= 0 ? '' : 'none';
+          });
+        }
+      }
+    }
+    
+    // Update logs
+    if (data.log_lines && typeof RAW_LINES !== 'undefined') {
+      RAW_LINES.length = 0;
+      RAW_LINES.push(...data.log_lines);
+      renderLog('logPreview');
+      renderLog('logTerminal');
+    }
+    
+    // Sync live clock base time
+    if (data.gen_at) {
+      const parts = data.gen_at.split(':');
+      h = parseInt(parts[0], 10);
+      m = parseInt(parts[1], 10);
+      s = parseInt(parts[2], 10);
+      const liveClockEl = document.getElementById('liveClock');
+      if (liveClockEl) {
+        liveClockEl.textContent = data.gen_at;
+      }
+    }
+    
+  } catch (e) {
+    // Fail silently when served statically via file://
+  }
+}
+// Start polling
+setInterval(updateLiveDashboard, 3000);
 </script>
 </body>
 </html>
