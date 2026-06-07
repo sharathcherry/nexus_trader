@@ -107,10 +107,10 @@ class Config:
         if not val or val.lower().startswith("your_") or "placeholder" in val.lower():
             raise ValueError(
                 f"Required environment variable '{key}' is missing or contains placeholder value '{val}'. "
-                "Please set it correctly in your .env file."
+                f"Required env var '{key}' is missing or has a placeholder value. "
+                "Set it in your .env file."
             )
         return val
 
 
-# Module-level singleton -- import as: from config import config
 config = Config()

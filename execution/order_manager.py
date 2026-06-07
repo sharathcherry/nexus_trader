@@ -25,6 +25,10 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
 
+# Simulated slippage on entry: 0.15% above requested price.
+# Mirrors real-world market order fill on NSE (spread + impact cost).
+_SLIPPAGE_PCT = 0.0015
+
 
 class OrderManager:
     """

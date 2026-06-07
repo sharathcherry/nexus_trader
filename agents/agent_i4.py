@@ -374,9 +374,9 @@ class AgentI4:
         else:
             while not watchlist_ready_event.is_set():
                 await asyncio.sleep(0.1)
-        logger.info("AgentI4: watchlist ready — starting market session loop")
+        logger.info("AgentI4: watchlist ready -- starting market session loop")
 
-        # Initialize bought symbols from database (for restart resilience)
+        # Restore bought symbols from DB for restart resilience
         try:
             summary = portfolio.get_portfolio_summary()
             for pos in summary.get("positions", []):
@@ -389,50 +389,40 @@ class AgentI4:
         except Exception as e:
             logger.error("Failed to restore bought symbols state: %s", e)
 
-        # ------------------------------------------------------------------
-        # Nifty 50 index filter: if Nifty is down >0.5% at open, block
-        # all long strategies (GAP_AND_GO, ORB_BREAKOUT, VWAP_RECLAIM).
-        # Only GAP_FILL (mean-reversion) is allowed in bearish markets.
-        # ------------------------------------------------------------------
-        nifty_bearish = False
+        # Nifty 50 index filter: block all long strategies if Nifty is down >0.5%
         try:
-            import yfinance as _yf
-            nifty_df = _yf.download("^NSEI", period="2d", interval="1d",
-                                     progress=False, auto_adjust=False)
+            nifty_df = yf.download("^NSEI", period="2d", interval="1d",
+                                   progress=False, auto_adjust=False)
             if nifty_df is not None and not nifty_df.empty and len(nifty_df) >= 2:
                 prev_close = float(nifty_df["Close"].iloc[-2])
                 last_close = float(nifty_df["Close"].iloc[-1])
                 nifty_chg = (last_close - prev_close) / prev_close * 100
                 if nifty_chg < -0.5:
-                    nifty_bearish = True
                     blocked = [s for s, e in self.watchlist_map.items()
                                if e.strategy in ("GAP_AND_GO", "ORB_BREAKOUT", "VWAP_RECLAIM")]
                     for sym in blocked:
                         del self.watchlist_map[sym]
                     logger.warning(
-                        "NIFTY BEARISH FILTER: Nifty %.2f%% — blocked %d long setups, keeping GAP_FILL only",
+                        "NIFTY BEARISH FILTER: %.2f%% -- blocked %d long setups",
                         nifty_chg, len(blocked),
                     )
                     notifier.send_error(
                         "Nifty Bearish Filter",
-                        f"Nifty down {nifty_chg:.2f}% — {len(blocked)} long setups blocked. Only GAP_FILL active.",
+                        f"Nifty down {nifty_chg:.2f}% -- {len(blocked)} long setups blocked. Only GAP_FILL active.",
                     )
         except Exception as _nifty_exc:
             logger.warning("Nifty filter check failed (non-fatal): %s", _nifty_exc)
 
         first_cycle = True
         while True:
-            # Run the first cycle immediately (no sleep) to catch opening-range signals.
-            # Subsequent cycles sleep 60 s between polls.
+            # First cycle runs immediately; subsequent cycles sleep 60 s
             if first_cycle:
                 first_cycle = False
             else:
                 await asyncio.sleep(60)
 
             current_time = datetime.datetime.now(IST)
-            session_end = current_time.replace(
-                hour=15, minute=15, second=0, microsecond=0
-            )
+            session_end = current_time.replace(hour=15, minute=15, second=0, microsecond=0)
 
             if current_time >= session_end:
                 break
@@ -442,11 +432,13 @@ class AgentI4:
             except Exception as e:
                 logger.error("Error in run cycle: %s", e, exc_info=True)
 
-        # Force squareoff at the end of the session
-        logger.info("AgentI4: market session ended — initiating end-of-session force squareoff")
-        current_prices = {}
+        # Force squareoff at end of session
+        logger.info("AgentI4: market session ended -- initiating force squareoff")
+        current_prices: dict[str, float] = {}
         try:
-            candles_map = await asyncio.to_thread(self._fetch_batch, list(self.watchlist_map.keys()))
+            candles_map = await asyncio.to_thread(
+                self._fetch_batch, list(self.watchlist_map.keys())
+            )
             for sym, df in candles_map.items():
                 if df is not None and not df.empty:
                     current_prices[sym] = float(df["Close"].iloc[-1])

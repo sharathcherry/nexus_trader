@@ -55,84 +55,6 @@ class TelegramNotifier:
         if not self._enabled:
             logger.info("TelegramNotifier: disabled (placeholder keys)")
 
-    def _groq_chat(self, user_msg: str) -> str:
-        """Answer any free-form question using Groq + live portfolio context."""
-        try:
-            from utils.analytics_logger import analytics
-            ctx = analytics.get_context_for_ai(max_log_lines=50)
-        except Exception:
-            ctx = {}
-
-        # Compact context for system prompt
-        capital     = ctx.get("capital", "unknown")
-        positions   = ctx.get("open_positions", [])
-        recent      = ctx.get("recent_trades", [])
-        stats       = ctx.get("analytics", {})
-        today_sess  = ctx.get("today_session", {})
-        weekly      = ctx.get("weekly_summary", [])
-        log_excerpt = "\n".join(ctx.get("log_excerpt", [])[-30:])
-        decisions   = ctx.get("recent_decisions", [])
-
-        def fmt_positions(p):
-            if not p: return "None"
-            return "\n".join(
-                f"  {x['symbol']} {x.get('strategy','')} entry=Rs{x['entry_price']:.2f} "
-                f"sl=Rs{x.get('stop_loss',0):.2f} target=Rs{x.get('target',0):.2f} qty={x['qty']}"
-                for x in p
-            )
-
-        def fmt_trades(t):
-            if not t: return "None"
-            return "\n".join(
-                f"  {x['symbol']} {x.get('strategy','')} PnL=Rs{x['net_pnl']:+.2f} "
-                f"exit={x.get('exit_reason','')} @ {x['exit_time'][:16]}"
-                for x in t[:8]
-            )
-
-        system = f"""You are nexus_trader's AI trading assistant embedded in a Telegram bot.
-Answer questions about portfolio performance, trades, logs, and strategy.
-Be concise (max 5-6 lines), factual, and use Rs for Indian Rupees.
-
-LIVE PORTFOLIO DATA:
-Capital: Rs{capital}
-Open positions ({len(positions)}):
-{fmt_positions(positions)}
-
-Recent trades:
-{fmt_trades(recent)}
-
-All-time stats: {stats.get('total_trades',0)} trades, {stats.get('winners',0)}W/{stats.get('losers',0)}L, net PnL=Rs{stats.get('total_net_pnl',0):+.2f}, avg RR={stats.get('avg_realized_rr',0):.2f}
-Best trade: {stats.get('best_trade')}
-Worst trade: {stats.get('worst_trade')}
-
-Today session: {today_sess}
-Weekly summary: {weekly}
-
-RECENT LOG (last 30 lines):
-{log_excerpt}
-
-Recent decisions: {decisions[-5:] if decisions else 'none'}
-
-If the user asks to analyse logs, reference the log excerpt above. If data is missing, say so honestly."""
-
-        try:
-            groq_key = getattr(config, "GROQ_API_KEY", "")
-            if not groq_key:
-                return "Groq API key not configured. Check your .env file."
-            client = Groq(api_key=groq_key)
-            resp = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": user_msg},
-                ],
-                max_tokens=400,
-                temperature=0.3,
-            )
-            return resp.choices[0].message.content.strip()
-        except Exception as e:
-            return f"AI error: {e}"
-
     def _send(self, text: str) -> None:
         if not self._enabled:
             return
@@ -310,6 +232,84 @@ class TelegramCommandBot:
         else:
             reply = self._groq_chat(text)
         self._send(reply)
+
+    def _groq_chat(self, user_msg: str) -> str:
+        """Answer any free-form question using Groq + live portfolio context."""
+        try:
+            from utils.analytics_logger import analytics
+            ctx = analytics.get_context_for_ai(max_log_lines=50)
+        except Exception:
+            ctx = {}
+
+        # Compact context for system prompt
+        capital     = ctx.get("capital", "unknown")
+        positions   = ctx.get("open_positions", [])
+        recent      = ctx.get("recent_trades", [])
+        stats       = ctx.get("analytics", {})
+        today_sess  = ctx.get("today_session", {})
+        weekly      = ctx.get("weekly_summary", [])
+        log_excerpt = "\n".join(ctx.get("log_excerpt", [])[-30:])
+        decisions   = ctx.get("recent_decisions", [])
+
+        def fmt_positions(p):
+            if not p: return "None"
+            return "\n".join(
+                f"  {x['symbol']} {x.get('strategy','')} entry=Rs{x['entry_price']:.2f} "
+                f"sl=Rs{x.get('stop_loss',0):.2f} target=Rs{x.get('target',0):.2f} qty={x['qty']}"
+                for x in p
+            )
+
+        def fmt_trades(t):
+            if not t: return "None"
+            return "\n".join(
+                f"  {x['symbol']} {x.get('strategy','')} PnL=Rs{x['net_pnl']:+.2f} "
+                f"exit={x.get('exit_reason','')} @ {x['exit_time'][:16]}"
+                for x in t[:8]
+            )
+
+        system = f"""You are nexus_trader's AI trading assistant embedded in a Telegram bot.
+Answer questions about portfolio performance, trades, logs, and strategy.
+Be concise (max 5-6 lines), factual, and use Rs for Indian Rupees.
+
+LIVE PORTFOLIO DATA:
+Capital: Rs{capital}
+Open positions ({len(positions)}):
+{fmt_positions(positions)}
+
+Recent trades:
+{fmt_trades(recent)}
+
+All-time stats: {stats.get('total_trades',0)} trades, {stats.get('winners',0)}W/{stats.get('losers',0)}L, net PnL=Rs{stats.get('total_net_pnl',0):+.2f}, avg RR={stats.get('avg_realized_rr',0):.2f}
+Best trade: {stats.get('best_trade')}
+Worst trade: {stats.get('worst_trade')}
+
+Today session: {today_sess}
+Weekly summary: {weekly}
+
+RECENT LOG (last 30 lines):
+{log_excerpt}
+
+Recent decisions: {decisions[-5:] if decisions else 'none'}
+
+If the user asks to analyse logs, reference the log excerpt above. If data is missing, say so honestly."""
+
+        try:
+            groq_key = getattr(config, "GROQ_API_KEY", "")
+            if not groq_key:
+                return "Groq API key not configured. Check your .env file."
+            client = Groq(api_key=groq_key)
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user_msg},
+                ],
+                max_tokens=400,
+                temperature=0.3,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            return f"AI error: {e}"
 
     def _send(self, text: str) -> None:
         try:

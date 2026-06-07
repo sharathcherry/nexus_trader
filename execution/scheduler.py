@@ -39,8 +39,7 @@ from config import config
 from execution.order_manager import OrderManager
 from execution.portfolio import PaperPortfolio
 from utils.logger import setup_logger
-from utils.telegram import notifier
-from utils.telegram_bot import bot as telegram_bot
+from utils.telegram import notifier, bot as telegram_bot
 
 logger = setup_logger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
@@ -296,12 +295,10 @@ class TradingScheduler:
 
     def start(self) -> None:
         self._scheduler.start()
-        from utils.telegram import bot as telegram_bot
         telegram_bot.start()
         logger.info("TradingScheduler started -- IST timezone, Mon-Fri schedule")
 
     def shutdown(self, wait: bool = True) -> None:
-        from utils.telegram import bot as telegram_bot
         telegram_bot.stop()
         self._scheduler.shutdown(wait=wait)
         logger.info("TradingScheduler stopped")

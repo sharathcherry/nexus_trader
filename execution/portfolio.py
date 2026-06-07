@@ -459,22 +459,23 @@ class PaperPortfolio:
         # Deep analytics logging (non-fatal)
         try:
             from utils.analytics_logger import analytics
+            _pos = dict(position)  # sqlite3.Row has no .get() -- convert first
             analytics.log_trade(
                 symbol=symbol,
-                strategy=position.get("strategy", "UNKNOWN"),
-                entry_price=position["entry_price"],
-                fill_price=position["entry_price"],
+                strategy=_pos.get("strategy", "UNKNOWN"),
+                entry_price=_pos["entry_price"],
+                fill_price=_pos["entry_price"],
                 exit_price=exit_price,
                 qty=qty,
-                stop_loss=position.get("stop_loss", 0.0),
-                target=position.get("target", 0.0),
+                stop_loss=_pos.get("stop_loss", 0.0),
+                target=_pos.get("target", 0.0),
                 exit_reason=exit_reason,
                 gross_pnl=round(gross_pnl, 4),
-                brokerage=charges["total_charges"],
+                brokerage=charges["brokerage"],        # brokerage only, not total
                 net_pnl=round(net_pnl, 4),
                 capital_before=current_capital,
                 capital_after=new_capital,
-                entry_time=position.get("entry_time", ""),
+                entry_time=_pos.get("entry_time", ""),
                 exit_time=exit_time,
             )
         except Exception as _ae:
@@ -650,3 +651,101 @@ class PaperPortfolio:
 
         conn.close()
         return {"daily_pnl": daily_pnl, "trades": trades}
+
+    # ------------------------------------------------------------------
+    # Watchlist persistence (called by scheduler + agent_i4)
+    # ------------------------------------------------------------------
+
+    def save_watchlist(self, watchlist: list) -> None:
+        """Persist today's watchlist entries to DB for restart resilience."""
+        with _get_conn() as conn:
+            conn.execute("DELETE FROM watchlist")
+            for e in watchlist:
+                conn.execute(
+                    """INSERT OR REPLACE INTO watchlist
+                       (symbol, sector, gap_pct, gap_score, strategy,
+                        entry_trigger, stop_loss, target, rr_ratio,
+                        catalyst_type, atr)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        e.symbol,
+                        getattr(e, "sector", "UNKNOWN"),
+                        getattr(e, "gap_pct", 0.0),
+                        getattr(e, "gap_score", 0.0),
+                        e.strategy,
+                        getattr(e, "entry_trigger", 0.0),
+                        e.stop_loss,
+                        e.target,
+                        getattr(e, "rr_ratio", 0.0),
+                        getattr(e, "catalyst_type", "UNKNOWN"),
+                        getattr(e, "atr", 0.0),
+                    ),
+                )
+        logger.info("Watchlist saved to DB: %d symbols", len(watchlist))
+
+    def load_watchlist(self) -> list:
+        """Restore watchlist from DB as WatchlistEntry objects."""
+        from agents.models import WatchlistEntry
+        with _get_conn() as conn:
+            rows = conn.execute("SELECT * FROM watchlist").fetchall()
+        entries = []
+        for r in rows:
+            try:
+                entries.append(WatchlistEntry(
+                    symbol=r["symbol"],
+                    sector=r["sector"],
+                    gap_pct=r["gap_pct"],
+                    gap_score=r["gap_score"],
+                    strategy=r["strategy"],
+                    entry_trigger=r["entry_trigger"],
+                    stop_loss=r["stop_loss"],
+                    target=r["target"],
+                    rr_ratio=r["rr_ratio"],
+                    catalyst_type=r["catalyst_type"],
+                    atr=r["atr"],
+                ))
+            except Exception as ex:
+                logger.warning("Could not restore watchlist entry %s: %s", r["symbol"], ex)
+        logger.info("Watchlist loaded from DB: %d symbols", len(entries))
+        return entries
+
+    def update_watchlist_trigger(self, symbol: str, new_trigger: float) -> None:
+        """Update entry_trigger for a watchlist symbol (ORB override)."""
+        with _get_conn() as conn:
+            conn.execute(
+                "UPDATE watchlist SET entry_trigger=? WHERE symbol=?",
+                (new_trigger, symbol),
+            )
+        logger.debug("Watchlist trigger updated %s -> %.2f", symbol, new_trigger)
+
+    # ------------------------------------------------------------------
+    # Analytics queries (Telegram bot + dashboard)
+    # ------------------------------------------------------------------
+
+    def get_weekly_pnl(self) -> list:
+        """Net P&L grouped by date for the last 7 calendar days."""
+        with _get_conn() as conn:
+            rows = conn.execute(
+                """SELECT substr(exit_time,1,10) as date,
+                          COUNT(*) as trades,
+                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                          ROUND(SUM(net_pnl),2) as net_pnl
+                   FROM trades
+                   WHERE exit_time >= date('now','-7 days')
+                   GROUP BY date ORDER BY date DESC"""
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_strategy_stats(self) -> list:
+        """Win/loss/P&L breakdown per strategy, all-time."""
+        with _get_conn() as conn:
+            rows = conn.execute(
+                """SELECT strategy,
+                          COUNT(*) as trades,
+                          SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                          SUM(CASE WHEN net_pnl <= 0 THEN 1 ELSE 0 END) as losses,
+                          ROUND(SUM(net_pnl),2) as pnl
+                   FROM trades
+                   GROUP BY strategy ORDER BY pnl DESC"""
+            ).fetchall()
+        return [dict(r) for r in rows]
