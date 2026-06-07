@@ -483,6 +483,36 @@ class PaperPortfolio:
 
         return True
 
+    def force_squareoff_all(self, current_prices: dict[str, float] = None) -> int:
+        """Close all open positions at market price. Idempotent."""
+        if current_prices is None:
+            current_prices = {}
+
+        if self._get_meta("force_squaredoff") == "1":
+            logger.info("PaperPortfolio.force_squareoff_all: already executed (idempotency guard)")
+            return 0
+
+        self._set_meta("force_squaredoff", "1")
+        summary = self.get_portfolio_summary()
+        positions = summary.get("positions", [])
+        if not positions:
+            return 0
+
+        closed_count = 0
+        from utils.telegram import notifier
+        for pos in positions:
+            sym = pos["symbol"]
+            price = current_prices.get(sym, pos["entry_price"])
+            try:
+                self.sell(sym, price, pos["qty"], "FORCE_SQUAREOFF")
+                notifier.send_squareoff(sym, price, pos["qty"])
+                closed_count += 1
+            except Exception as e:
+                logger.error("Failed to sell %s in force_squareoff_all: %s", sym, e)
+
+        logger.info(f"PaperPortfolio: force squared off {closed_count} positions")
+        return closed_count
+
     def partial_exit(
         self,
         symbol: str,

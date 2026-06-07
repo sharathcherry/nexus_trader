@@ -179,14 +179,7 @@ class AgentI4:
             return
 
         self._squaredoff = True
-        summary = portfolio.get_portfolio_summary()
-
-        for pos in summary.get("positions", []):
-            sym = pos["symbol"]
-            price = current_prices.get(sym, pos["entry_price"])
-            portfolio.sell(sym, price, pos["qty"], "FORCE_SQUAREOFF")
-            notifier.send_squareoff(sym, price, pos["qty"])
-
+        portfolio.force_squareoff_all(current_prices)
         logger.info("AgentI4: force squareoff complete")
 
     # ------------------------------------------------------------------
