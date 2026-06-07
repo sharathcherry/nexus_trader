@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
+import pytz
+
+IST = pytz.timezone("Asia/Kolkata")
 
 from groq import Groq, APIConnectionError, APITimeoutError, RateLimitError, APIStatusError
 from pydantic import BaseModel, ValidationError
@@ -102,6 +105,7 @@ class AgentI9:
             conn.row_factory = sqlite3.Row
             try:
                 cur = conn.cursor()
+                cutoff_date = (datetime.now(IST) - timedelta(days=days)).strftime("%Y-%m-%d")
                 cur.execute(
                     """
                     SELECT strategy,
@@ -109,10 +113,10 @@ class AgentI9:
                            AVG(net_pnl) AS avg_net_pnl,
                            SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate
                     FROM trades
-                    WHERE DATE(exit_time) >= DATE('now', :days)
+                    WHERE DATE(exit_time) >= :cutoff_date
                     GROUP BY strategy
                     """,
-                    {"days": f"-{days} days"},
+                    {"cutoff_date": cutoff_date},
                 )
                 strategy_rows = [dict(r) for r in cur.fetchall()]
                 cur.execute(
@@ -121,9 +125,9 @@ class AgentI9:
                            SUM(net_pnl) AS total_net_pnl,
                            SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate_overall
                     FROM trades
-                    WHERE DATE(exit_time) >= DATE('now', :days)
+                    WHERE DATE(exit_time) >= :cutoff_date
                     """,
-                    {"days": f"-{days} days"},
+                    {"cutoff_date": cutoff_date},
                 )
                 totals_row = cur.fetchone()
                 totals = dict(totals_row) if totals_row else {}
@@ -315,6 +319,20 @@ class AgentI9:
             (PERF_DIR / f"review_{today_str}.json").write_text(
                 review.model_dump_json(indent=2), encoding="utf-8"
             )
+            # SQLite persistence
+            try:
+                self.portfolio.save_daily_review(
+                    review_date=today_str,
+                    verdict=review.session_verdict,
+                    winning_strategies=review.winning_strategies,
+                    underperforming_strategies=review.underperforming_strategies,
+                    parameter_adjustments=[a.model_dump() for a in review.parameter_adjustments],
+                    tomorrow_watch=review.tomorrow_watch,
+                    summary=review.summary,
+                )
+            except Exception as e:
+                logger.error("Failed to save daily review to database: %s", e)
+
             # Full decision audit log
             dlog.review_complete(
                 verdict=review.session_verdict,

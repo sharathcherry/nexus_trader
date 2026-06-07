@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import sqlite3
@@ -25,6 +26,15 @@ DB_PATH = Path("execution/portfolio.db")
 PERF_DIR = Path("logs/performance")
 OUT_PATH = Path("logs/dashboard.html")
 IST = pytz.timezone("Asia/Kolkata")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _esc(val) -> str:
+    """Escape HTML special characters to prevent XSS."""
+    return html.escape(str(val)) if val is not None else ""
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +82,30 @@ def _load_latest_review() -> dict | None:
         if "partial" in f.name or "failed" in f.name:
             continue
         try:
-            return json.loads(f.read_text(encoding="utf-8"))
+            data = json.loads(f.read_text(encoding="utf-8"))
+            date_part = f.name.replace("review_", "").replace(".json", "")
+            if len(date_part) == 8:
+                data["review_date"] = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:]}"
+            else:
+                data["review_date"] = date_part
+
+            if "summary" in data and "overall_assessment" not in data:
+                data["overall_assessment"] = data["summary"]
+
+            if "recommendations" not in data:
+                recs = []
+                adjustments = data.get("parameter_adjustments", [])
+                for adj in adjustments:
+                    recs.append(
+                        f"Parameter Adjustment: {adj.get('param_name')} "
+                        f"({adj.get('current_value')} → {adj.get('suggested_value')}) — {adj.get('reason')}"
+                    )
+                watch = data.get("tomorrow_watch", [])
+                if watch:
+                    recs.append(f"Watch tomorrow: {', '.join(watch)}")
+                data["recommendations"] = recs
+
+            return data
         except Exception:
             continue
     return None
@@ -160,12 +193,12 @@ def _trades_table_rows(trades: list[dict]) -> str:
         color = _pnl_color(t["net_pnl"])
         rows.append(
             f"<tr>"
-            f"<td>{t['symbol']}</td>"
-            f"<td>{t.get('strategy','')}</td>"
+            f"<td>{_esc(t['symbol'])}</td>"
+            f"<td>{_esc(t.get('strategy',''))}</td>"
             f"<td>₹{t['entry_price']:,.2f}</td>"
             f"<td>₹{t['exit_price']:,.2f}</td>"
             f"<td>{t['qty']}</td>"
-            f"<td>{t.get('exit_reason','')}</td>"
+            f"<td>{_esc(t.get('exit_reason',''))}</td>"
             f"<td style='color:{color};font-weight:600'>{_fmt_inr(t['net_pnl'])}</td>"
             f"<td>{t['exit_time'][:16]}</td>"
             f"</tr>"
@@ -178,8 +211,8 @@ def _positions_table_rows(positions: list[dict]) -> str:
     for p in positions:
         rows.append(
             f"<tr>"
-            f"<td>{p['symbol']}</td>"
-            f"<td>{p.get('strategy','')}</td>"
+            f"<td>{_esc(p['symbol'])}</td>"
+            f"<td>{_esc(p.get('strategy',''))}</td>"
             f"<td>₹{p['entry_price']:,.2f}</td>"
             f"<td>{p['qty']}</td>"
             f"<td>₹{p.get('stop_loss',0):,.2f}</td>"
@@ -215,11 +248,11 @@ def generate_html(starting_capital: float = 100_000.0) -> str:
     if review:
         rec_rows = ""
         for r in review.get("recommendations", []):
-            rec_rows += f"<li>{r}</li>"
+            rec_rows += f"<li>{_esc(r)}</li>"
         review_html = f"""
         <div class="card">
-            <h2>Latest AI Review — {review.get('review_date','')}</h2>
-            <p style="color:#888;margin-bottom:12px">{review.get('overall_assessment','')}</p>
+            <h2>Latest AI Review — {_esc(review.get('review_date',''))}</h2>
+            <p style="color:#888;margin-bottom:12px">{_esc(review.get('overall_assessment',''))}</p>
             <b>Recommendations:</b>
             <ul style="margin-top:8px;padding-left:20px;line-height:1.8">{rec_rows}</ul>
         </div>"""

@@ -25,8 +25,13 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# Module-level Gemini client — created once, reused (D-01a pattern)
-client = genai.Client(api_key=config.GEMINI_API_KEY)
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=config.GEMINI_API_KEY)
+    return _client
 
 _FILTER_CATALYSTS = {"BLOCK_DEAL", "INDEX_REBALANCE"}
 
@@ -45,7 +50,7 @@ async def run(candidates: list[GapCandidate]) -> list[GapCandidate]:
 
     for candidate in candidates:
         await asyncio.sleep(1)  # 1s between Gemini calls — rate limit (D-05)
-        result = _classify_news(candidate)
+        result = await asyncio.to_thread(_classify_news, candidate)
         candidate.catalyst_type = result.catalyst_type
         candidate.trade_recommendation = result.trade_recommendation
 
@@ -98,7 +103,7 @@ def _classify_news(candidate: GapCandidate) -> NewsAnalysis:
             "summary: brief 1-sentence summary of the catalyst"
         )
 
-        response = client.models.generate_content(
+        response = _get_client().models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(

@@ -18,7 +18,7 @@ _NSE_UNIVERSE = [
     {"symbol": "IOC.NS", "sector": "Energy"},
     {"symbol": "GAIL.NS", "sector": "Energy"},
     {"symbol": "COALINDIA.NS", "sector": "Energy"},
-    # Financial Services (10)
+    # Financial Services (11)
     {"symbol": "HDFCBANK.NS", "sector": "Financial Services"},
     {"symbol": "ICICIBANK.NS", "sector": "Financial Services"},
     {"symbol": "KOTAKBANK.NS", "sector": "Financial Services"},
@@ -29,6 +29,7 @@ _NSE_UNIVERSE = [
     {"symbol": "HDFCLIFE.NS", "sector": "Financial Services"},
     {"symbol": "SBILIFE.NS", "sector": "Financial Services"},
     {"symbol": "SHRIRAMFIN.NS", "sector": "Financial Services"},
+    {"symbol": "INDUSINDBK.NS", "sector": "Financial Services"},
     # IT (7)
     {"symbol": "TCS.NS", "sector": "IT"},
     {"symbol": "INFY.NS", "sector": "IT"},
@@ -70,9 +71,8 @@ _NSE_UNIVERSE = [
     {"symbol": "HINDALCO.NS", "sector": "Metals"},
     {"symbol": "VEDL.NS", "sector": "Metals"},
     {"symbol": "SAIL.NS", "sector": "Metals"},
-    # Telecom (2)
+    # Telecom (1)
     {"symbol": "BHARTIARTL.NS", "sector": "Telecom"},
-    {"symbol": "INDUSINDBK.NS", "sector": "Telecom"},
     # Infra (7)
     {"symbol": "LT.NS", "sector": "Infra"},
     {"symbol": "ADANIPORTS.NS", "sector": "Infra"},
@@ -97,7 +97,7 @@ _NSE_UNIVERSE = [
     {"symbol": "ASIANPAINT.NS", "sector": "Chemicals"},
     {"symbol": "BERGERPAINTS.NS", "sector": "Chemicals"},
     # Media / Realty (6)
-    {"symbol": "ZOMATO.NS", "sector": "Realty"},
+    {"symbol": "ZOMATO.NS", "sector": "Others"},
     {"symbol": "NYKAA.NS", "sector": "Media"},
     {"symbol": "PAYTM.NS", "sector": "Media"},
     {"symbol": "DLF.NS", "sector": "Realty"},
@@ -128,7 +128,7 @@ _NSE_UNIVERSE = [
 
 def get_nse_universe() -> list[dict]:
     """Return the Nifty 100 universe as a list of dicts with 'symbol' and 'sector' keys."""
-    return _NSE_UNIVERSE
+    return [stock.copy() for stock in _NSE_UNIVERSE]
 
 
 # Build a fast O(1) symbol → sector lookup map at import time

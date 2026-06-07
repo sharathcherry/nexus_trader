@@ -27,8 +27,13 @@ logger = setup_logger(__name__)
 from utils.decision_logger import dlog
 IST = pytz.timezone("Asia/Kolkata")
 
-# Module-level Gemini client — created once, reused across calls (D-01a)
-client = genai.Client(api_key=config.GEMINI_API_KEY)
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=config.GEMINI_API_KEY)
+    return _client
 
 # Module-level MarketDataFetcher instance
 fetcher = MarketDataFetcher()
@@ -103,7 +108,7 @@ Determine:
 Be conservative. If global cues are mixed, lean towards NEUTRAL.
 """
 
-    response = client.models.generate_content(
+    response = _get_client().models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(

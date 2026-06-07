@@ -31,7 +31,6 @@ class Config:
 
         # Entry/exit R:R
         self.MIN_RISK_REWARD = 1.5
-        self.MIN_RR_RATIO    = 1.5         # alias used by Phase 4a agents
 
         # Gap filter
         self.GAP_MIN_PCT      = 1.5
@@ -98,13 +97,17 @@ class Config:
             return False
         return dt not in self._current_holidays
 
+    @property
+    def MIN_RR_RATIO(self) -> float:
+        return self.MIN_RISK_REWARD
+
     @staticmethod
     def _require(key: str) -> str:
-        val = os.getenv(key, "")
-        if not val:
+        val = os.getenv(key, "").strip()
+        if not val or val.lower().startswith("your_") or "placeholder" in val.lower():
             raise ValueError(
-                f"Required environment variable '{key}' is not set. "
-                "Add it to your .env file."
+                f"Required environment variable '{key}' is missing or contains placeholder value '{val}'. "
+                "Please set it correctly in your .env file."
             )
         return val
 

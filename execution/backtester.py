@@ -36,7 +36,7 @@ class NexusBacktester:
                     period="5d",
                     interval="1d",
                     group_by="ticker",
-                    auto_adjust=False,
+                    auto_adjust=True,
                     progress=False,
                 )
                 time.sleep(0.2)  # rate-limit guard after every batch
@@ -90,20 +90,8 @@ class NexusBacktester:
         return result
 
     def _calculate_brokerage(self, buy_price: float, sell_price: float, qty: int) -> dict:
-        """Zerodha intraday brokerage math. Exchange rate: 0.0000307."""
-        turnover = (buy_price + sell_price) * qty
-        brokerage = min(20.0, 0.0003 * turnover)
-        stt = 0.00025 * sell_price * qty
-        exchange_charges = 0.0000307 * turnover
-        gst = 0.18 * brokerage
-        total_charges = brokerage + stt + exchange_charges + gst
-        return {
-            "brokerage": brokerage,
-            "stt": stt,
-            "exchange": exchange_charges,
-            "gst": gst,
-            "total_charges": total_charges,
-        }
+        from utils.brokerage import calculate_brokerage
+        return calculate_brokerage(buy_price, sell_price, qty)
 
     def _simulate_day(
         self, trade_date: date, running_capital: float, equity_curve: list[float]
@@ -156,8 +144,11 @@ class NexusBacktester:
                     continue
                 qty = max(1, int(risk_amount / risk_per_share))
 
-                # Exit logic: TARGET wins if both hit same day
-                if d["high"] >= target:
+                # Exit logic: STOP_HIT wins if both hit same day (conservative backtesting)
+                if d["high"] >= target and d["low"] <= stop:
+                    exit_price = stop
+                    exit_reason = "STOP_HIT"
+                elif d["high"] >= target:
                     exit_price = target
                     exit_reason = "TARGET_HIT"
                 elif d["low"] <= stop:

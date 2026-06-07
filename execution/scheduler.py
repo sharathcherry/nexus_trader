@@ -22,6 +22,7 @@ import asyncio
 import concurrent.futures
 import datetime
 from datetime import date
+import threading
 
 import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -44,26 +45,9 @@ from utils.telegram_bot import bot as telegram_bot
 logger = setup_logger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
 
-NSE_HOLIDAYS_2026 = {
-    date(2026, 1, 26),   # Republic Day
-    date(2026, 3, 25),   # Holi
-    date(2026, 4, 2),    # Ram Navami
-    date(2026, 4, 10),   # Good Friday
-    date(2026, 4, 14),   # Ambedkar Jayanti
-    date(2026, 5, 1),    # Maharashtra Day
-    date(2026, 8, 15),   # Independence Day
-    date(2026, 10, 2),   # Gandhi Jayanti
-    date(2026, 10, 22),  # Dussehra
-    date(2026, 11, 4),   # Diwali Laxmi Puja
-    date(2026, 11, 5),   # Diwali Balipratipada
-    date(2026, 11, 25),  # Guru Nanak Jayanti
-    date(2026, 12, 25),  # Christmas
-}
-
-
 def is_trading_day(d: date) -> bool:
-    """Return True if d is a weekday and not an NSE 2026 holiday."""
-    return d.weekday() < 5 and d not in NSE_HOLIDAYS_2026
+    """Return True if d is a weekday and not an NSE holiday."""
+    return config.is_trading_day(d)
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +65,7 @@ class NexusTrader:
         self.dry_run = dry_run
         self._portfolio = PaperPortfolio()
         self._order_manager = OrderManager(self._portfolio)
-        self._watchlist_ready = asyncio.Event()
+        self._watchlist_ready = threading.Event()
         self._watchlist: list[WatchlistEntry] = []
         logger.info(f"NexusTrader initialized (dry_run={dry_run})")
 
@@ -165,6 +149,10 @@ class NexusTrader:
         if not self._watchlist_ready.is_set():
             self._watchlist_ready.set()
 
+        # Save watchlist to portfolio DB for restart resilience
+        if self._watchlist:
+            self._portfolio.save_watchlist(self._watchlist)
+
     # ------------------------------------------------------------------
     # Market session  (09:15 IST)
     # ------------------------------------------------------------------
@@ -178,6 +166,12 @@ class NexusTrader:
         if self.dry_run:
             logger.info("DRY-RUN mode — skipping live market session")
             return
+
+        # Try to restore watchlist from DB on restart
+        if not self._watchlist:
+            self._watchlist = self._portfolio.load_watchlist()
+            if self._watchlist:
+                logger.info("Restored watchlist from database: %d symbols", len(self._watchlist))
 
         agent_i4 = AgentI4(self._watchlist)
         notifier.send_market_open(len(self._watchlist), self._portfolio.capital)
@@ -202,9 +196,23 @@ class NexusTrader:
     # ------------------------------------------------------------------
 
     def run_post_market_review(self) -> None:
-        """Run AgentI9 Claude Sonnet review after market close."""
+        """Run AgentI9 Claude Sonnet review after market close and backup DB."""
         reviewer = AgentI9(self._portfolio)
         reviewer.run()
+
+        # Daily backup of portfolio.db
+        try:
+            import shutil
+            from pathlib import Path
+            db_file = Path("execution/portfolio.db")
+            if db_file.exists():
+                backup_dir = Path("backups")
+                backup_dir.mkdir(exist_ok=True)
+                today_str = datetime.datetime.now(IST).strftime("%Y%m%d")
+                shutil.copy2(db_file, backup_dir / f"portfolio_{today_str}.db")
+                logger.info(f"Database backed up to backups/portfolio_{today_str}.db")
+        except Exception as e:
+            logger.error("Failed to backup portfolio database: %s", e)
 
 
 # ---------------------------------------------------------------------------

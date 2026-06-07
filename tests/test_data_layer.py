@@ -214,3 +214,21 @@ class TestIndicators:
         )
         result = Indicators.volume_ratio(df)
         assert result == 0.0, f"Expected 0.0 for 1-row DataFrame, got {result}"
+
+    def test_rsi_all_gains_and_flat(self):
+        """Test RSI edge cases: all gains must return 100, flat price must return 50."""
+        # 1. All gains (only increasing prices)
+        gains_df = pd.DataFrame({
+            "Close": [100.0 + i for i in range(20)],
+            "Volume": [1000] * 20
+        })
+        rsi_gains = Indicators.rsi(gains_df, period=14)
+        assert rsi_gains.iloc[-1] == 100.0, f"Expected 100.0 for all gains, got {rsi_gains.iloc[-1]}"
+
+        # 2. Flat price (no price movement)
+        flat_df = pd.DataFrame({
+            "Close": [100.0] * 20,
+            "Volume": [1000] * 20
+        })
+        rsi_flat = Indicators.rsi(flat_df, period=14)
+        assert rsi_flat.iloc[-1] == 50.0, f"Expected 50.0 for flat price, got {rsi_flat.iloc[-1]}"

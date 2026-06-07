@@ -57,14 +57,15 @@ class OrderManager:
         Returns:
             Integer share quantity (0 if risk_per_share <= 0).
         """
-        risk_amount = config.CAPITAL * config.RISK_PER_TRADE_PCT  # e.g. ₹1,000
+        current_capital = self.portfolio.capital
+        risk_amount = current_capital * config.RISK_PER_TRADE_PCT  # e.g. ₹1,000
         risk_per_share = abs(entry_price - stop_loss)
 
         if risk_per_share <= 0:
             return 0
 
         qty = int(risk_amount / risk_per_share)
-        max_qty = int((config.CAPITAL * config.MAX_POSITION_PCT) / entry_price)  # Rs20,000 cap per position
+        max_qty = int((current_capital * config.MAX_POSITION_PCT) / entry_price)  # Rs20,000 cap per position
         return min(qty, max_qty)
 
     # ------------------------------------------------------------------
@@ -136,8 +137,8 @@ class OrderManager:
 
                 # 4. Partial exit at 1:1 R:R (if not already partially exited)
                 if not position["partial_exited"]:
-                    reward = position["target"] - position["entry_price"]
-                    half_way = position["entry_price"] + reward  # 1:1 R:R point
+                    risk = position["entry_price"] - position["stop_loss"]
+                    half_way = position["entry_price"] + risk  # True 1:1 R:R point
                     if current_price >= half_way:
                         exit_qty = position["qty"] // 2
                         if exit_qty > 0:
@@ -243,8 +244,8 @@ class OrderManager:
         No further action once SL already equals entry_price.
         """
         entry_price = position["entry_price"]
-        reward = position["target"] - entry_price
+        risk = entry_price - position["stop_loss"]
 
-        if current_price >= entry_price + reward:  # 1:1 R:R reached
+        if current_price >= entry_price + risk:  # 1:1 R:R reached
             if entry_price > position["stop_loss"]:  # not yet at breakeven
                 self.portfolio.update_stop_loss(symbol, entry_price)

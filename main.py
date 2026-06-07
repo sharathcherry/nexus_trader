@@ -76,7 +76,7 @@ def main() -> None:
         from datetime import datetime
 
         yesterday = datetime.now(ist).date() - timedelta(days=1)
-        trader = NexusTrader(dry_run=False)
+        trader = NexusTrader(dry_run=True)
         trader.run_pre_market_pipeline(date_override=yesterday)
         sys.exit(0)
 
@@ -84,20 +84,35 @@ def main() -> None:
     trader = NexusTrader(dry_run=False)
     scheduler = TradingScheduler(nexus_trader=trader)
     scheduler.start()
-    logger.info("nexus_trader running — press Ctrl+C to stop")
+    logger.info("nexus_trader running — waiting for SIGINT/SIGTERM (Ctrl+C to stop)")
 
+    import signal
+
+    def handle_shutdown(signum, frame) -> None:
+        logger.info("Shutdown signal received (%d) — initiating graceful exit...", signum)
+        shutdown_event.set()
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    # SIGTERM is supported on UNIX and partially Windows (as CTRL_BREAK_EVENT or terminal shutdown)
     try:
-        shutdown_event.wait()
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt — shutting down gracefully")
-        try:
-            # Best-effort: close all open positions at current prices (empty map
-            # falls back to entry_price for each position)
-            trader._portfolio.force_squareoff_all({})
-        except Exception:
-            pass
-        scheduler.shutdown()
-        sys.exit(0)
+        signal.signal(signal.SIGTERM, handle_shutdown)
+    except ValueError:
+        # Windows occasionally raises ValueError if not in main thread (which we are, but good to guard)
+        pass
+
+    shutdown_event.wait()
+
+    logger.info("Graceful shutdown: closing open positions...")
+    try:
+        # Best-effort: close all open positions at current prices
+        trader._portfolio.force_squareoff_all({})
+    except Exception as e:
+        logger.error("Error during force squareoff on shutdown: %s", e)
+
+    logger.info("Stopping scheduler...")
+    scheduler.shutdown()
+    logger.info("Shutdown complete.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,7 @@ class AgentI4:
         self.watchlist_map: dict[str, WatchlistEntry] = {
             e.symbol: e for e in watchlist
         }
+        self.bought_symbols: set[str] = set()
         self._squaredoff: bool = False
         self._orb_set: bool = False
         self.circuit_set: set[str] = set()
@@ -109,6 +110,7 @@ class AgentI4:
         self,
         candles_map: dict[str, pd.DataFrame],
         current_time: datetime.datetime,
+        portfolio=None,
     ) -> None:
         """
         Compute ORB high/low from actual 5-min candles and update entry_trigger
@@ -149,6 +151,8 @@ class AgentI4:
                     orb_high,
                 )
                 entry.entry_trigger = orb_high
+                if portfolio is not None:
+                    portfolio.update_watchlist_trigger(sym, orb_high)
 
     # ------------------------------------------------------------------
     # Force squareoff
@@ -213,8 +217,12 @@ class AgentI4:
         summary = portfolio.get_portfolio_summary()
         open_symbols = {p["symbol"] for p in summary.get("positions", [])}
 
-        # Iterate over a snapshot to allow safe deletion during loop
+        # Iterate over a snapshot
         for sym in list(self.watchlist_map.keys()):
+            # Skip already bought symbols to prevent duplicate/re-entry trades
+            if sym in self.bought_symbols:
+                continue
+
             # Skip circuit-hit symbols
             if sym in self.circuit_set:
                 continue
@@ -282,7 +290,7 @@ class AgentI4:
             )
 
             if success:
-                del self.watchlist_map[sym]
+                self.bought_symbols.add(sym)
                 logger.info(
                     "BUY %s at %.2f qty=%d strategy=%s",
                     sym, current_price, qty, strategy,
@@ -322,7 +330,7 @@ class AgentI4:
           3. Check entry signals
           4. Apply ORB override (once, after 09:30)
         """
-        candles_map = self._fetch_batch(list(self.watchlist_map.keys()))
+        candles_map = await asyncio.to_thread(self._fetch_batch, list(self.watchlist_map.keys()))
 
         self.monitor.monitor_positions(
             portfolio,
@@ -333,7 +341,7 @@ class AgentI4:
         )
 
         self._check_entries(candles_map, portfolio, current_time, order_manager)
-        self._maybe_apply_orb_override(candles_map, current_time)
+        self._maybe_apply_orb_override(candles_map, current_time, portfolio)
 
     # ------------------------------------------------------------------
     # Main async loop
@@ -356,8 +364,26 @@ class AgentI4:
             watchlist_ready_event: asyncio.Event — set by pre-market pipeline.
             order_manager:         Optional OrderManager for quantity sizing.
         """
-        await watchlist_ready_event.wait()
+        # Wait for the watchlist ready event (supports both asyncio.Event and threading.Event)
+        if isinstance(watchlist_ready_event, asyncio.Event):
+            await watchlist_ready_event.wait()
+        else:
+            while not watchlist_ready_event.is_set():
+                await asyncio.sleep(0.1)
         logger.info("AgentI4: watchlist ready — starting market session loop")
+
+        # Initialize bought symbols from database (for restart resilience)
+        try:
+            summary = portfolio.get_portfolio_summary()
+            for pos in summary.get("positions", []):
+                self.bought_symbols.add(pos["symbol"])
+            today_report = portfolio.get_daily_report()
+            for t in today_report.get("trades", []):
+                self.bought_symbols.add(t["symbol"])
+            if self.bought_symbols:
+                logger.info("Restored bought symbols: %s", self.bought_symbols)
+        except Exception as e:
+            logger.error("Failed to restore bought symbols state: %s", e)
 
         first_cycle = True
         while True:
@@ -379,4 +405,17 @@ class AgentI4:
             try:
                 await self._run_cycle(portfolio, current_time, order_manager)
             except Exception as e:
-                logge
+                logger.error("Error in run cycle: %s", e, exc_info=True)
+
+        # Force squareoff at the end of the session
+        logger.info("AgentI4: market session ended — initiating end-of-session force squareoff")
+        current_prices = {}
+        try:
+            candles_map = await asyncio.to_thread(self._fetch_batch, list(self.watchlist_map.keys()))
+            for sym, df in candles_map.items():
+                if df is not None and not df.empty:
+                    current_prices[sym] = float(df["Close"].iloc[-1])
+        except Exception as e:
+            logger.error("Failed to fetch final prices for force squareoff: %s", e)
+
+        self.force_squareoff_all(portfolio, current_prices)

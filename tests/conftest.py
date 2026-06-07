@@ -1,4 +1,19 @@
 import os
+import sys
+from unittest.mock import MagicMock
+
+# Mock aiohttp and mcp to prevent imports of uvicorn/aiohttp from hanging during tests on Windows
+class MockModule(MagicMock):
+    pass
+
+sys.modules['aiohttp'] = MockModule()
+sys.modules['aiohttp.client'] = MockModule()
+sys.modules['aiohttp.client_exceptions'] = MockModule()
+sys.modules['aiohttp.log'] = MockModule()
+sys.modules['aiohttp.typedefs'] = MockModule()
+sys.modules['aiohttp.http_exceptions'] = MockModule()
+sys.modules['mcp'] = MockModule()
+sys.modules['mcp.types'] = MockModule()
 
 import numpy as np
 import pandas as pd
@@ -9,6 +24,7 @@ import pytest
 # Uses setdefault so real keys in .env take precedence when running live.
 # ---------------------------------------------------------------------------
 os.environ.setdefault("GEMINI_API_KEY", "fake-gemini")
+os.environ.setdefault("GROQ_API_KEY", "fake-groq")
 os.environ.setdefault("ANTHROPIC_API_KEY", "fake-anthropic")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "fake-token")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "fake-chat")

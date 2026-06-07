@@ -13,6 +13,7 @@ Schema decisions:
 """
 
 import sqlite3
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -110,6 +111,30 @@ class PaperPortfolio:
                     key   TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS watchlist (
+                    symbol        TEXT    PRIMARY KEY,
+                    sector        TEXT    NOT NULL,
+                    gap_pct       REAL    NOT NULL,
+                    gap_score     REAL    NOT NULL,
+                    strategy      TEXT    NOT NULL,
+                    entry_trigger REAL    NOT NULL,
+                    stop_loss     REAL    NOT NULL,
+                    target        REAL    NOT NULL,
+                    rr_ratio      REAL    NOT NULL,
+                    catalyst_type TEXT    NOT NULL,
+                    atr           REAL    NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS daily_reviews (
+                    review_date                  TEXT PRIMARY KEY,
+                    session_verdict              TEXT NOT NULL,
+                    winning_strategies           TEXT NOT NULL,
+                    underperforming_strategies   TEXT NOT NULL,
+                    parameter_adjustments        TEXT NOT NULL,
+                    tomorrow_watch               TEXT NOT NULL,
+                    summary                      TEXT NOT NULL
+                );
             """)
 
     # ------------------------------------------------------------------
@@ -159,6 +184,9 @@ class PaperPortfolio:
             self._set_meta("is_halted", "0")
             self._set_meta("force_squaredoff", "0")
             self._set_meta("last_trade_date", today)
+            # Clear watchlist table on new day reset
+            with _get_conn() as conn:
+                conn.execute("DELETE FROM watchlist")
             logger.info("Daily state reset for %s", today)
 
     # ------------------------------------------------------------------
@@ -214,34 +242,8 @@ class PaperPortfolio:
     def _calculate_brokerage(
         self, buy_price: float, sell_price: float, qty: int
     ) -> dict:
-        """
-        Compute Zerodha intraday brokerage breakdown.
-
-        Formula (STATE.md corrected exchange rate 0.0000307):
-          turnover         = (buy_price + sell_price) * qty
-          brokerage        = min(20, 0.0003 * turnover)
-          stt              = 0.00025 * sell_price * qty  (sell-side only)
-          exchange_charges = 0.0000307 * turnover
-          gst              = 0.18 * brokerage
-          total_charges    = sum of all four
-        """
-        buy_turnover = buy_price * qty
-        sell_turnover = sell_price * qty
-        turnover = buy_turnover + sell_turnover
-
-        brokerage = min(20.0, 0.0003 * turnover)
-        stt = 0.00025 * sell_turnover
-        exchange_charges = 0.0000307 * turnover
-        gst = 0.18 * brokerage
-        total_charges = brokerage + stt + exchange_charges + gst
-
-        return {
-            "brokerage": round(brokerage, 4),
-            "stt": round(stt, 4),
-            "exchange_charges": round(exchange_charges, 4),
-            "gst": round(gst, 4),
-            "total_charges": round(total_charges, 4),
-        }
+        from utils.brokerage import calculate_brokerage
+        return calculate_brokerage(buy_price, sell_price, qty)
 
     # ------------------------------------------------------------------
     # Core trading methods
@@ -315,9 +317,26 @@ class PaperPortfolio:
 
         entry_time = self._now_ist_str()
         cost = entry_price * qty
-        new_capital = self.capital - cost
 
         with _get_conn() as conn:
+            # Fetch current capital
+            row = conn.execute("SELECT value FROM meta WHERE key = 'capital'").fetchone()
+            current_capital = float(row["value"]) if row else float(config.CAPITAL)
+
+            # Guard: negative capital check
+            if current_capital < cost:
+                logger.warning(
+                    "BUY REJECTED %s — Insufficient capital. Required: Rs%.2f, Available: Rs%.2f",
+                    symbol, cost, current_capital
+                )
+                return False
+
+            row = conn.execute("SELECT value FROM meta WHERE key = 'trade_count'").fetchone()
+            current_trade_count = int(row["value"]) if row else 0
+
+            new_capital = current_capital - cost
+            new_trade_count = current_trade_count + 1
+
             conn.execute(
                 """
                 INSERT INTO positions
@@ -327,9 +346,17 @@ class PaperPortfolio:
                 (symbol, entry_price, qty, stop_loss, target, strategy, entry_time),
             )
 
-        # Update meta: capital and trade_count
-        self._set_meta("capital", str(new_capital))
-        self._set_meta("trade_count", str(self.trade_count + 1))
+            # Update meta: capital and trade_count inside transaction
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('capital', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(new_capital),),
+            )
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('trade_count', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(new_trade_count),),
+            )
 
         logger.info(
             "BUY %s qty=%d @ Rs%.2f | SL=Rs%.2f | Target=Rs%.2f | Strategy=%s",
@@ -358,6 +385,7 @@ class PaperPortfolio:
         gross_pnl = (exit_price - position["entry_price"]) * qty
         net_pnl = gross_pnl - charges["total_charges"]
         exit_time = self._now_ist_str()
+        proceeds = (exit_price * qty) - charges["total_charges"]
 
         with _get_conn() as conn:
             conn.execute(
@@ -388,22 +416,39 @@ class PaperPortfolio:
             )
             conn.execute("DELETE FROM positions WHERE symbol = ?", (symbol,))
 
-        # Update capital: return proceeds minus charges
-        proceeds = (exit_price * qty) - charges["total_charges"]
-        new_capital = self.capital + proceeds
-        new_daily_pnl = self.daily_pnl + net_pnl
-        self._set_meta("capital", str(new_capital))
-        self._set_meta("daily_pnl", str(new_daily_pnl))
+            # Update capital and daily_pnl inside transaction
+            row = conn.execute("SELECT value FROM meta WHERE key = 'capital'").fetchone()
+            current_capital = float(row["value"]) if row else float(config.CAPITAL)
 
-        # Check halt threshold
-        halt_threshold = -(config.DAILY_LOSS_LIMIT_PCT * config.CAPITAL)
-        if new_daily_pnl < halt_threshold:
-            self._set_meta("is_halted", "1")
-            logger.warning(
-                "TRADING HALTED — Daily P&L Rs%.2f crossed limit Rs%.2f",
-                new_daily_pnl,
-                halt_threshold,
+            row = conn.execute("SELECT value FROM meta WHERE key = 'daily_pnl'").fetchone()
+            current_daily_pnl = float(row["value"]) if row else 0.0
+
+            new_capital = current_capital + proceeds
+            new_daily_pnl = current_daily_pnl + net_pnl
+
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('capital', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(new_capital),),
             )
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('daily_pnl', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(new_daily_pnl),),
+            )
+
+            # Check halt threshold
+            halt_threshold = -(config.DAILY_LOSS_LIMIT_PCT * config.CAPITAL)
+            if new_daily_pnl < halt_threshold:
+                conn.execute(
+                    "INSERT INTO meta (key, value) VALUES ('is_halted', '1') "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+                )
+                logger.warning(
+                    "TRADING HALTED — Daily P&L Rs%.2f crossed limit Rs%.2f",
+                    new_daily_pnl,
+                    halt_threshold,
+                )
 
         pnl_sign = "+" if net_pnl >= 0 else ""
         logger.info(
@@ -443,6 +488,7 @@ class PaperPortfolio:
         gross_pnl = (exit_price - position["entry_price"]) * exit_qty
         net_pnl = gross_pnl - charges["total_charges"]
         exit_time = self._now_ist_str()
+        proceeds = (exit_price * exit_qty) - charges["total_charges"]
 
         with _get_conn() as conn:
             conn.execute(
@@ -480,11 +526,26 @@ class PaperPortfolio:
                 (exit_qty, symbol),
             )
 
-        proceeds = (exit_price * exit_qty) - charges["total_charges"]
-        new_capital = self.capital + proceeds
-        new_daily_pnl = self.daily_pnl + net_pnl
-        self._set_meta("capital", str(new_capital))
-        self._set_meta("daily_pnl", str(new_daily_pnl))
+            # Update capital and daily_pnl inside transaction
+            row = conn.execute("SELECT value FROM meta WHERE key = 'capital'").fetchone()
+            current_capital = float(row["value"]) if row else float(config.CAPITAL)
+
+            row = conn.execute("SELECT value FROM meta WHERE key = 'daily_pnl'").fetchone()
+            current_daily_pnl = float(row["value"]) if row else 0.0
+
+            new_capital = current_capital + proceeds
+            new_daily_pnl = current_daily_pnl + net_pnl
+
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('capital', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(new_capital),),
+            )
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('daily_pnl', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(new_daily_pnl),),
+            )
 
         pnl_sign = "+" if net_pnl >= 0 else ""
         logger.info(
@@ -633,3 +694,106 @@ class PaperPortfolio:
 
         logger.info("FORCE SQUAREOFF: closed %d positions", closed)
         return closed
+
+    # ------------------------------------------------------------------
+    # Watchlist and Review SQLite Persistence (Issue 291)
+    # ------------------------------------------------------------------
+
+    def save_watchlist(self, watchlist: list) -> None:
+        """Clear existing watchlist and save a new list of WatchlistEntry objects."""
+        with _get_conn() as conn:
+            conn.execute("DELETE FROM watchlist")
+            for entry in watchlist:
+                conn.execute(
+                    """
+                    INSERT INTO watchlist (
+                        symbol, sector, gap_pct, gap_score, strategy,
+                        entry_trigger, stop_loss, target, rr_ratio, catalyst_type, atr
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        entry.symbol,
+                        entry.sector,
+                        entry.gap_pct,
+                        entry.gap_score,
+                        entry.strategy,
+                        entry.entry_trigger,
+                        entry.stop_loss,
+                        entry.target,
+                        entry.rr_ratio,
+                        entry.catalyst_type,
+                        entry.atr,
+                    ),
+                )
+            logger.info("Saved %d watchlist entries to database", len(watchlist))
+
+    def load_watchlist(self) -> list:
+        """Load watchlist entries from the database."""
+        from agents.models import WatchlistEntry
+        with _get_conn() as conn:
+            rows = conn.execute("SELECT * FROM watchlist").fetchall()
+        result = []
+        for r in rows:
+            result.append(
+                WatchlistEntry(
+                    symbol=r["symbol"],
+                    sector=r["sector"],
+                    gap_pct=r["gap_pct"],
+                    gap_score=r["gap_score"],
+                    strategy=r["strategy"],
+                    entry_trigger=r["entry_trigger"],
+                    stop_loss=r["stop_loss"],
+                    target=r["target"],
+                    rr_ratio=r["rr_ratio"],
+                    catalyst_type=r["catalyst_type"],
+                    atr=r["atr"],
+                )
+            )
+        return result
+
+    def update_watchlist_trigger(self, symbol: str, entry_trigger: float) -> None:
+        """Update entry_trigger for a symbol in the watchlist."""
+        with _get_conn() as conn:
+            conn.execute(
+                "UPDATE watchlist SET entry_trigger = ? WHERE symbol = ?",
+                (entry_trigger, symbol),
+            )
+        logger.debug("Updated watchlist trigger for %s to %.2f", symbol, entry_trigger)
+
+    def save_daily_review(
+        self,
+        review_date: str,
+        verdict: str,
+        winning_strategies: list[str],
+        underperforming_strategies: list[str],
+        parameter_adjustments: list[dict],
+        tomorrow_watch: list[str],
+        summary: str,
+    ) -> None:
+        """Save a daily review to the database."""
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO daily_reviews (
+                    review_date, session_verdict, winning_strategies,
+                    underperforming_strategies, parameter_adjustments, tomorrow_watch, summary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(review_date) DO UPDATE SET
+                    session_verdict = excluded.session_verdict,
+                    winning_strategies = excluded.winning_strategies,
+                    underperforming_strategies = excluded.underperforming_strategies,
+                    parameter_adjustments = excluded.parameter_adjustments,
+                    tomorrow_watch = excluded.tomorrow_watch,
+                    summary = excluded.summary
+                """,
+                (
+                    review_date,
+                    verdict,
+                    json.dumps(winning_strategies),
+                    json.dumps(underperforming_strategies),
+                    json.dumps(parameter_adjustments),
+                    json.dumps(tomorrow_watch),
+                    summary,
+                ),
+            )
+        logger.info("Saved daily review for %s to database", review_date)

@@ -29,12 +29,11 @@ class Indicators:
         Session-reset VWAP. Caller ensures df starts at 09:15 IST.
 
         Returns pd.Series of same length as df.
-        No NaN will result from a valid OHLCV DataFrame with non-zero volume.
         """
         typical = (df["High"] + df["Low"] + df["Close"]) / 3
         cum_tp_vol = (typical * df["Volume"]).cumsum()
-        cum_vol = df["Volume"].cumsum()
-        return cum_tp_vol / cum_vol
+        cum_vol = df["Volume"].cumsum().replace(0, np.nan)
+        return (cum_tp_vol / cum_vol).fillna(df["Close"])
 
     @staticmethod
     def ema(df: pd.DataFrame, period: int = 20, column: str = "Close") -> pd.Series:
@@ -59,7 +58,11 @@ class Indicators:
         loss = (-delta.clip(upper=0)).rolling(period).mean()
         # Prevent division by zero when loss is 0 (all gains, RSI = 100)
         rs = gain / loss.replace(0, float("nan"))
-        return 100 - (100 / (1 + rs))
+        rsi = 100 - (100 / (1 + rs))
+        # Handle edge cases where loss is 0 or price is flat
+        rsi.loc[(gain > 0) & (loss == 0)] = 100.0
+        rsi.loc[(gain == 0) & (loss == 0)] = 50.0
+        return rsi
 
     @staticmethod
     def atr(df: pd.DataFrame, period: int = 14) -> float:

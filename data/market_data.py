@@ -40,13 +40,27 @@ class MarketDataFetcher:
     yfinance wrapper providing OHLCV data for NSE stocks and global indices.
     All methods are error-tolerant: exceptions caught internally, safe values returned.
     """
+    # Class-level cache to share cached data across all fetcher instances
+    _fetch_cache: dict[tuple, tuple[float, pd.DataFrame]] = {}
+    _cache_ttl = 300  # 5 minutes TTL
 
     def _safe_fetch(self, symbol: str, **kwargs) -> pd.DataFrame:
         """
         Internal helper: sleep -> fetch -> guard.
-        Sleeps 0.2s before every yfinance call (rate-limit guard).
+        Sleeps 0.2s before every yfinance call (rate-limit guard) unless cached.
         Returns empty pd.DataFrame() on any failure.
         """
+        current_time = time.time()
+        # Build cache key from symbol and kwargs
+        cache_key = (symbol, tuple(sorted(kwargs.items())))
+
+        if cache_key in self._fetch_cache:
+            cache_ts, cached_df = self._fetch_cache[cache_key]
+            if current_time - cache_ts < self._cache_ttl:
+                logger.debug("MarketDataFetcher: returning cached data for %s", symbol)
+                return cached_df.copy()
+
+        # Cache miss: sleep and fetch
         time.sleep(_RATE_LIMIT_DELAY)
         try:
             df = yf.Ticker(symbol).history(**kwargs)
@@ -55,7 +69,8 @@ class MarketDataFetcher:
                     "_safe_fetch(%s): empty response -- possible 429 or delisted", symbol
                 )
                 return pd.DataFrame()
-            return df
+            self._fetch_cache[cache_key] = (current_time, df)
+            return df.copy()
         except Exception as exc:
             logger.error("_safe_fetch(%s): %s", symbol, exc)
             return pd.DataFrame()

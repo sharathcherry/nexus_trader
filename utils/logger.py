@@ -77,8 +77,7 @@ def setup_logger(name: str) -> logging.Logger:
 
     # File handler — plain text, rolls at midnight, 30-day retention
     Path("logs").mkdir(exist_ok=True)
-    today = datetime.now().strftime("%Y-%m-%d")
-    log_file = f"logs/nexus_{today}.log"
+    log_file = "logs/nexus.log"
 
     file_handler = TimedRotatingFileHandler(
         log_file,

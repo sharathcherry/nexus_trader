@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import datetime
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -289,13 +290,13 @@ class TestCheckEntriesSignals:
 
 class TestCheckEntriesSymbolHandling:
     def test_symbol_removed_after_successful_buy(self):
-        """Symbol deleted from watchlist_map after successful buy."""
+        """Symbol added to bought_symbols after successful buy."""
         agent = _make_agent([("RELIANCE.NS", "GAP_AND_GO", 1480, 1465, 1510)])
         portfolio = mock_portfolio_factory()
         portfolio.buy.return_value = True
         candles_map = {"RELIANCE.NS": make_candles([1490.0])}
         agent._check_entries(candles_map, portfolio, _now_ist(10, 0), None)
-        assert "RELIANCE.NS" not in agent.watchlist_map
+        assert "RELIANCE.NS" in agent.bought_symbols
 
     def test_symbol_retained_after_failed_buy(self):
         """Symbol stays in watchlist_map when buy returns False."""
@@ -314,3 +315,36 @@ class TestCheckEntriesSymbolHandling:
         candles_map = {"RELIANCE.NS": make_candles([1490.0])}
         agent._check_entries(candles_map, portfolio, _now_ist(10, 0), None)
         portfolio.buy.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# run method and force squareoff
+# ---------------------------------------------------------------------------
+
+class TestRunMethod:
+    @pytest.mark.asyncio
+    async def test_run_loop_terminates_and_calls_force_squareoff(self):
+        """run() should exit the loop and call force_squareoff_all at session end."""
+        agent = _make_agent([("RELIANCE.NS", "GAP_AND_GO", 1480, 1465, 1510)])
+        portfolio = mock_portfolio_factory()
+        portfolio.get_portfolio_summary.return_value = {"positions": []}
+        portfolio.get_daily_report.return_value = {"trades": []}
+
+        # Mock event
+        event = asyncio.Event()
+        event.set()
+
+        # Mock _fetch_batch to avoid yfinance downloads in test
+        agent._fetch_batch = MagicMock(return_value={"RELIANCE.NS": make_candles([1490.0])})
+
+        # Mock datetime to return past 15:15
+        mock_now = _now_ist(15, 20)
+        with patch("agents.agent_i4.datetime.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_now
+
+            # Call run
+            await agent.run([], portfolio, event)
+
+        # Assert force_squareoff_all was called
+        assert agent._squaredoff is True
+
