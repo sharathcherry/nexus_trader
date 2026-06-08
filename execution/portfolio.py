@@ -264,37 +264,39 @@ class PaperPortfolio:
         Returns True on success, False on any rejection.
         All rejections are logged at WARNING level with reason.
         """
+        from utils.telegram import notifier
         open_positions = self._get_open_positions()
         open_symbols = [row["symbol"] for row in open_positions]
 
         # Guard: halt
         if self.is_halted:
-            logger.warning(
-                "BUY REJECTED %s — Trading halted (daily loss limit reached)", symbol
-            )
+            reason = "Trading halted (daily loss limit reached)"
+            logger.warning("BUY REJECTED %s — %s", symbol, reason)
+            notifier.send_rejection(symbol, reason)
             return False
 
         # Guard: max open positions
         if len(open_positions) >= config.MAX_OPEN_POSITIONS:
-            logger.warning(
-                "BUY REJECTED %s — Max open positions reached (%d)",
-                symbol,
-                config.MAX_OPEN_POSITIONS,
-            )
+            reason = f"Max open positions reached ({config.MAX_OPEN_POSITIONS})"
+            logger.warning("BUY REJECTED %s — %s", symbol, reason)
+            notifier.send_rejection(symbol, reason)
             return False
 
         # Guard: max trades per day
         if self.trade_count >= config.MAX_TRADES_PER_DAY:
-            logger.warning(
-                "BUY REJECTED %s — Max daily trades reached (%d)",
-                symbol,
-                config.MAX_TRADES_PER_DAY,
-            )
+            reason = f"Max daily trades reached ({config.MAX_TRADES_PER_DAY})"
+            logger.warning("BUY REJECTED %s — %s", symbol, reason)
+            notifier.send_rejection(symbol, reason)
             return False
 
         # Guard: already holding
         if symbol in open_symbols:
-            logger.warning("BUY REJECTED %s -- Already holding this symbol", symbol)
+            reason = "Already holding this symbol"
+            logger.warning("BUY REJECTED %s -- %s", symbol, reason)
+            # Notifier might be spammy for this since signal evaluates multiple times, 
+            # but per user request we notify when portfolio rejects buy order.
+            # To reduce spam for already holding, maybe skip telegram or send it. Let's send.
+            notifier.send_rejection(symbol, reason)
             return False
 
         # Guard: sector concentration (max MAX_POSITIONS_PER_SECTOR per sector)
@@ -307,10 +309,9 @@ class PaperPortfolio:
                     if get_symbol_sector(pos["symbol"]) == sector
                 )
                 if sector_count >= config.MAX_POSITIONS_PER_SECTOR:
-                    logger.warning(
-                        "BUY REJECTED %s -- Sector concentration limit (%d/%d in %s)",
-                        symbol, sector_count, config.MAX_POSITIONS_PER_SECTOR, sector,
-                    )
+                    reason = f"Sector concentration limit ({sector_count}/{config.MAX_POSITIONS_PER_SECTOR} in {sector})"
+                    logger.warning("BUY REJECTED %s -- %s", symbol, reason)
+                    notifier.send_rejection(symbol, reason)
                     return False
         except Exception:
             pass  # sector guard is best-effort; never block a trade on lookup failure
@@ -325,10 +326,9 @@ class PaperPortfolio:
 
             # Guard: negative capital check
             if current_capital < cost:
-                logger.warning(
-                    "BUY REJECTED %s — Insufficient capital. Required: Rs%.2f, Available: Rs%.2f",
-                    symbol, cost, current_capital
-                )
+                reason = f"Insufficient capital. Required: Rs{cost:.2f}, Available: Rs{current_capital:.2f}"
+                logger.warning("BUY REJECTED %s — %s", symbol, reason)
+                notifier.send_rejection(symbol, reason)
                 return False
 
             row = conn.execute("SELECT value FROM meta WHERE key = 'trade_count'").fetchone()
@@ -483,7 +483,7 @@ class PaperPortfolio:
 
         return True
 
-    def force_squareoff_all(self, current_prices: dict[str, float] = None) -> int:
+    def force_squareoff_all(self, current_prices: dict[str, float] | None = None) -> int:
         """Close all open positions at market price. Idempotent."""
         if current_prices is None:
             current_prices = {}
@@ -779,3 +779,35 @@ class PaperPortfolio:
                    GROUP BY strategy ORDER BY pnl DESC"""
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def save_daily_review(
+        self,
+        review_date: str,
+        verdict: str,
+        winning_strategies: list,
+        underperforming_strategies: list,
+        parameter_adjustments: list,
+        tomorrow_watch: list,
+        summary: str,
+    ) -> None:
+        """Persist I9 daily review outputs to DB."""
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO daily_reviews
+                  (review_date, session_verdict, winning_strategies,
+                   underperforming_strategies, parameter_adjustments,
+                   tomorrow_watch, summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    review_date,
+                    verdict,
+                    json.dumps(winning_strategies),
+                    json.dumps(underperforming_strategies),
+                    json.dumps(parameter_adjustments),
+                    json.dumps(tomorrow_watch),
+                    summary,
+                ),
+            )
+        logger.info("Daily review saved for %s", review_date)

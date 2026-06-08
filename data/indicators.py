@@ -92,7 +92,7 @@ class Indicators:
         return float(val) if not pd.isna(val) else 0.0
 
     @staticmethod
-    def orb(df: pd.DataFrame, n_minutes: int = None) -> tuple[float, float]:
+    def orb(df: pd.DataFrame, n_minutes: int | None = None) -> tuple[float, float]:
         """
         Opening Range High/Low for first n_minutes of the session.
 

@@ -98,6 +98,18 @@ class TelegramNotifier:
         now = datetime.now(IST).strftime("%H:%M IST")
         self._send(f"<b>SQUAREOFF -- {symbol}</b>\nPrice : Rs{price:,.2f}  x{qty}\nTime  : {now}")
 
+    def send_rejection(self, symbol: str, reason: str) -> None:
+        now = datetime.now(IST).strftime("%H:%M IST")
+        self._send(f"<b>REJECTED -- {symbol}</b>\nReason : {reason}\nTime   : {now}")
+
+    def send_circuit_breaker(self, symbol: str, price: float) -> None:
+        now = datetime.now(IST).strftime("%H:%M IST")
+        self._send(
+            f"<b>CIRCUIT BREAKER ALERT -- {symbol}</b>\n"
+            f"Price  : Rs{price:,.2f} frozen for 3+ cycles\n"
+            f"Time   : {now}"
+        )
+
     def send_market_open(self, watchlist_count: int, capital: float) -> None:
         now = datetime.now(IST).strftime("%H:%M IST")
         self._send(
@@ -118,7 +130,7 @@ class TelegramNotifier:
             return
         strategy_counts: dict[str, int] = {}
         for e in watchlist:
-            s = e.get("strategy") if isinstance(e, dict) else getattr(e, "strategy", "?")
+            s = str(e.get("strategy") if isinstance(e, dict) else getattr(e, "strategy", "?"))
             strategy_counts[s] = strategy_counts.get(s, 0) + 1
         strat_str = "  ".join(f"{k}x{v}" for k, v in strategy_counts.items())
         lines = ""
@@ -180,6 +192,13 @@ class TelegramNotifier:
 
     def send_error(self, context: str, error: str) -> None:
         self._send(f"<b>nexus_trader -- Error</b>\nContext : {context}\nError   : {str(error)[:300]}")
+
+    def send_review(self, verdict: str, summary: str) -> None:
+        self._send(
+            f"<b>nexus_trader -- Daily Review</b>\n"
+            f"Verdict : {verdict}\n"
+            f"Summary : {summary}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +349,8 @@ If the user asks to analyse logs, reference the log excerpt above. If data is mi
                 max_tokens=400,
                 temperature=0.3,
             )
-            return resp.choices[0].message.content.strip()
+            content = resp.choices[0].message.content
+            return content.strip() if content else ""
         except Exception as e:
             return f"AI error: {e}"
 

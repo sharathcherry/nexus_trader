@@ -202,10 +202,6 @@ class AgentI4:
         entry_start = current_time.replace(
             hour=9, minute=30, second=0, microsecond=0
         )
-        entry_cutoff = current_time.replace(
-            hour=14, minute=0, second=0, microsecond=0
-        )
-        can_buy = entry_start <= current_time <= entry_cutoff
 
         summary = portfolio.get_portfolio_summary()
         open_symbols = {p["symbol"] for p in summary.get("positions", [])}
@@ -225,6 +221,22 @@ class AgentI4:
                 continue
 
             entry = self.watchlist_map[sym]
+            strategy = entry.strategy
+
+            # Strategy-specific time cutoffs
+            if strategy == "GAP_AND_GO":
+                cutoff_hour, cutoff_minute = 10, 30
+            else:
+                cutoff_hour, cutoff_minute = 14, 0
+
+            entry_cutoff = current_time.replace(
+                hour=cutoff_hour, minute=cutoff_minute, second=0, microsecond=0
+            )
+            can_buy = entry_start <= current_time <= entry_cutoff
+
+            if not can_buy:
+                # We skip signal check completely if outside window
+                continue
 
             # Resolve current price
             df = candles_map.get(sym, pd.DataFrame())
@@ -237,7 +249,6 @@ class AgentI4:
                 continue
 
             # Strategy-specific signal
-            strategy = entry.strategy
             if strategy == "GAP_AND_GO":
                 signal = current_price >= entry.entry_trigger
             elif strategy == "ORB_BREAKOUT":
@@ -250,12 +261,6 @@ class AgentI4:
                 signal = False
 
             if not signal:
-                continue
-
-            if not can_buy:
-                logger.debug(
-                    "Signal for %s outside entry window — skipping", sym
-                )
                 continue
 
             # Quantity sizing

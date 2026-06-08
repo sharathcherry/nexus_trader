@@ -168,13 +168,22 @@ def generate_html(starting_capital: float = 100_000.0) -> str:
             return '<tr><td colspan="8" class="empty">No open positions</td></tr>'
         r = ""
         for p in positions:
+            is_partial = p.get("partial_exited", 0) == 1
+            strat_label = _esc(p.get("strategy",""))
+            if is_partial:
+                strat_label += ' <span style="color:var(--amber);font-size:10px">[1/2]</span>'
+            
+            entry_val = p.get("entry_price", 0)
+            sl_val = p.get("stop_loss", 0)
+            sl_cls = "pos" if sl_val >= entry_val else "neg"
+            
             r += (f'<tr>'
                   f'<td><b>{_esc(p["symbol"])}</b></td>'
-                  f'<td class="dim">{_esc(p.get("strategy",""))}</td>'
-                  f'<td>{p["entry_price"]:,.0f}</td>'
+                  f'<td class="dim">{strat_label}</td>'
+                  f'<td>{entry_val:,.0f}</td>'
                   f'<td><b>—</b></td>'
                   f'<td class="dim">—</td>'
-                  f'<td class="neg">{p.get("stop_loss",0):,.0f}</td>'
+                  f'<td class="{sl_cls}">{sl_val:,.0f}</td>'
                   f'<td class="pos">{p.get("target",0):,.0f}</td>'
                   f'<td>{p.get("qty",0)}</td>'
                   f'</tr>')

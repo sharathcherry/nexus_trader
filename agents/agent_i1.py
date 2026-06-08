@@ -38,7 +38,10 @@ def _scan_universe() -> list[GapCandidate]:
 
     for stock in universe:
         symbol = stock.get("symbol")
-        sector = stock.get("sector")
+        sector = stock.get("sector", "UNKNOWN")
+
+        if not symbol:
+            continue
 
         try:
             prev_close = fetcher.get_previous_close(symbol)

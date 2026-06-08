@@ -66,7 +66,6 @@ def _price_poller_loop():
                     
                     if prices:
                         with _latest_prices_lock:
-                            global _latest_prices
                             _latest_prices.update(prices)
         except Exception:
             pass

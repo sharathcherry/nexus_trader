@@ -162,43 +162,21 @@ class TestOrbOverride:
 # ---------------------------------------------------------------------------
 
 class TestForceSquareoff:
-    def test_calls_sell_for_each_position(self):
-        """Sell is called once per open position."""
+    def test_calls_portfolio_force_squareoff(self):
+        """agent.force_squareoff_all delegates to portfolio.force_squareoff_all."""
         agent = _make_agent()
-        positions = [
-            {"symbol": "RELIANCE.NS", "entry_price": 1480, "qty": 5},
-            {"symbol": "TCS.NS",      "entry_price": 3500, "qty": 2},
-        ]
-        portfolio = mock_portfolio_factory(positions=positions)
-        agent.force_squareoff_all(portfolio, {})
-        assert portfolio.sell.call_count == 2
-
-    def test_uses_current_price_if_available(self):
-        """Exit price comes from current_prices dict when present."""
-        agent = _make_agent()
-        pos = {"symbol": "RELIANCE.NS", "entry_price": 1480, "qty": 5}
-        portfolio = mock_portfolio_factory(positions=[pos])
-        agent.force_squareoff_all(portfolio, {"RELIANCE.NS": 1500.0})
-        call_args = portfolio.sell.call_args[0]
-        assert call_args[1] == 1500.0
-
-    def test_falls_back_to_entry_price(self):
-        """Falls back to entry_price when symbol not in current_prices."""
-        agent = _make_agent()
-        pos = {"symbol": "RELIANCE.NS", "entry_price": 1480, "qty": 5}
-        portfolio = mock_portfolio_factory(positions=[pos])
-        agent.force_squareoff_all(portfolio, {})
-        call_args = portfolio.sell.call_args[0]
-        assert call_args[1] == 1480
+        portfolio = mock_portfolio_factory()
+        current_prices = {"RELIANCE.NS": 1500.0}
+        agent.force_squareoff_all(portfolio, current_prices)
+        portfolio.force_squareoff_all.assert_called_once_with(current_prices)
 
     def test_idempotent_second_call_is_noop(self):
-        """Second call to force_squareoff_all must not call sell again."""
+        """Second call to force_squareoff_all must not call portfolio.force_squareoff_all again."""
         agent = _make_agent()
-        pos = {"symbol": "RELIANCE.NS", "entry_price": 1480, "qty": 5}
-        portfolio = mock_portfolio_factory(positions=[pos])
+        portfolio = mock_portfolio_factory()
         agent.force_squareoff_all(portfolio, {})
         agent.force_squareoff_all(portfolio, {})
-        assert portfolio.sell.call_count == 1
+        assert portfolio.force_squareoff_all.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -230,9 +208,17 @@ class TestCheckEntriesTimeGates:
         agent._check_entries(candles_map, portfolio, _now_ist(9, 30), None)
         portfolio.buy.assert_called_once()
 
-    def test_buy_allowed_at_1400(self):
-        """Price at trigger exactly at 14:00 -> buy attempted."""
+    def test_buy_allowed_at_1030_gap_and_go(self):
+        """GAP_AND_GO allowed at 10:30 -> buy attempted."""
         agent = _make_agent([("RELIANCE.NS", "GAP_AND_GO", 1480, 1465, 1510)])
+        portfolio = mock_portfolio_factory()
+        candles_map = {"RELIANCE.NS": make_candles([1490.0])}
+        agent._check_entries(candles_map, portfolio, _now_ist(10, 30), None)
+        portfolio.buy.assert_called_once()
+
+    def test_buy_allowed_at_1400_orb_breakout(self):
+        """ORB_BREAKOUT allowed exactly at 14:00 -> buy attempted."""
+        agent = _make_agent([("RELIANCE.NS", "ORB_BREAKOUT", 1480, 1465, 1510)])
         portfolio = mock_portfolio_factory()
         candles_map = {"RELIANCE.NS": make_candles([1490.0])}
         agent._check_entries(candles_map, portfolio, _now_ist(14, 0), None)
@@ -323,12 +309,16 @@ class TestCheckEntriesSymbolHandling:
 
 class TestRunMethod:
     @pytest.mark.asyncio
-    async def test_run_loop_terminates_and_calls_force_squareoff(self):
+    @patch("agents.agent_i4.yf.download")
+    async def test_run_loop_terminates_and_calls_force_squareoff(self, mock_yf_download):
         """run() should exit the loop and call force_squareoff_all at session end."""
         agent = _make_agent([("RELIANCE.NS", "GAP_AND_GO", 1480, 1465, 1510)])
         portfolio = mock_portfolio_factory()
         portfolio.get_portfolio_summary.return_value = {"positions": []}
         portfolio.get_daily_report.return_value = {"trades": []}
+
+        # Mock yf.download to return empty df for nifty check
+        mock_yf_download.return_value = pd.DataFrame()
 
         # Mock event
         event = asyncio.Event()
@@ -347,4 +337,5 @@ class TestRunMethod:
 
         # Assert force_squareoff_all was called
         assert agent._squaredoff is True
+
 

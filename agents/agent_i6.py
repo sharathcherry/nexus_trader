@@ -66,6 +66,7 @@ class AgentI6:
         if len(d) == 3 and len(set(d)) == 1:
             logger.warning("POSSIBLE_CIRCUIT detected for %s", symbol)
             circuit_set.add(symbol)
+            notifier.send_circuit_breaker(symbol, current_price)
             return True
 
         return False
@@ -185,12 +186,13 @@ class AgentI6:
                             )
                             notifier.send_partial_exit(sym, current_price, exit_qty)
 
-            # --- Trailing SL ---
+            # --- Trailing SL & Breakeven SL ---
             # Re-fetch pos to get updated partial_exited flag after potential partial exit
-            _pos = portfolio._get_position(sym)
-            if _pos is None:
+            _pos_row = portfolio._get_position(sym)
+            if _pos_row is None:
                 # Position was fully closed upstream (race); nothing left to trail
                 continue
+            _pos = dict(_pos_row)
 
             watchlist_entry = watchlist_map.get(sym)
             if watchlist_entry is None:
@@ -199,6 +201,22 @@ class AgentI6:
                 )
                 continue
 
+            # Both GAP_AND_GO and ORB_BREAKOUT move SL to breakeven on partial exit
+            if strategy in ("GAP_AND_GO", "ORB_BREAKOUT"):
+                if _pos["partial_exited"] and pos["entry_price"] > _pos["stop_loss"]:
+                    dlog.sl_update(
+                        symbol=sym, strategy=strategy,
+                        old_sl=_pos["stop_loss"], new_sl=pos["entry_price"],
+                        current_price=current_price,
+                        reason="partial exit done; moved SL to breakeven (entry price)",
+                    )
+                    portfolio.update_stop_loss(sym, pos["entry_price"])
+                    _pos["stop_loss"] = pos["entry_price"]
+                    actions.append(
+                        f"BREAKEVEN_SL:{sym}@{pos['entry_price']:.2f}"
+                    )
+
+            # GAP_AND_GO additional ATR-based trailing SL
             if strategy == "GAP_AND_GO":
                 atr = watchlist_entry.atr
                 if atr and atr > 0:
@@ -215,20 +233,6 @@ class AgentI6:
                             actions.append(
                                 f"TRAIL_SL:{sym} new_sl={new_sl:.2f}"
                             )
-
-            elif strategy == "ORB_BREAKOUT":
-                # Move SL to breakeven (entry_price) once partially exited
-                if _pos["partial_exited"] and pos["entry_price"] > _pos["stop_loss"]:
-                    dlog.sl_update(
-                        symbol=sym, strategy="ORB_BREAKOUT",
-                        old_sl=_pos["stop_loss"], new_sl=pos["entry_price"],
-                        current_price=current_price,
-                        reason="partial exit done; moved SL to breakeven (entry price)",
-                    )
-                    portfolio.update_stop_loss(sym, pos["entry_price"])
-                    actions.append(
-                        f"BREAKEVEN_SL:{sym}@{pos['entry_price']:.2f}"
-                    )
 
             # GAP_FILL and VWAP_RECLAIM: fixed SL, no trailing
 
