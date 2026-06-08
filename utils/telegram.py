@@ -155,6 +155,29 @@ class TelegramNotifier:
             f"Limit     : {limit_pct:.0%}"
         )
 
+    def send_startup(self, capital: float) -> None:
+        """Send a notification when nexus_trader starts (VM boot / service restart)."""
+        now = datetime.now(IST)
+        time_str = now.strftime("%d %b %Y, %H:%M IST")
+        # Try to read system uptime (Linux)
+        uptime_str = "unknown"
+        try:
+            with open("/proc/uptime") as f:
+                secs = float(f.read().split()[0])
+            mins, secs = divmod(int(secs), 60)
+            hrs, mins = divmod(mins, 60)
+            uptime_str = f"{hrs}h {mins}m {secs}s"
+        except Exception:
+            uptime_str = "N/A (non-Linux)"
+        self._send(
+            f"<b>nexus_trader -- Service Online</b>\n\n"
+            f"Started  : {time_str}\n"
+            f"Uptime   : {uptime_str}\n"
+            f"Capital  : Rs{capital:,.0f}\n"
+            f"Mode     : LIVE\n\n"
+            f"<i>Scheduler active — waiting for 08:30 IST pre-market.</i>"
+        )
+
     def send_error(self, context: str, error: str) -> None:
         self._send(f"<b>nexus_trader -- Error</b>\nContext : {context}\nError   : {str(error)[:300]}")
 

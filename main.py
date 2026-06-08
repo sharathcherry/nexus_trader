@@ -84,6 +84,11 @@ def main() -> None:
     trader = NexusTrader(dry_run=False)
     scheduler = TradingScheduler(nexus_trader=trader)
     scheduler.start()
+
+    # Send Telegram "I'm alive" notification on every boot
+    from utils.telegram import notifier
+    notifier.send_startup(capital=config.CAPITAL)
+
     logger.info("nexus_trader running — waiting for SIGINT/SIGTERM (Ctrl+C to stop)")
 
     import signal
