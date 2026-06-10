@@ -69,6 +69,26 @@ class NexusTrader:
         logger.info(f"NexusTrader initialized (dry_run={dry_run})")
 
     # ------------------------------------------------------------------
+    # Upstox Auth (08:00 IST)
+    # ------------------------------------------------------------------
+    def refresh_upstox_token(self) -> None:
+        """Automated headless login to Upstox to refresh access token."""
+        if self.dry_run:
+            logger.info("DRY-RUN mode — skipping automated Upstox auth")
+            return
+            
+        try:
+            from utils.upstox_auth import get_upstox_access_token
+            logger.info("Attempting automated Upstox token refresh...")
+            token = get_upstox_access_token()
+            if token:
+                logger.info("Successfully refreshed Upstox access token.")
+            else:
+                logger.error("Failed to refresh Upstox token. Pre-market may fail.")
+        except Exception as e:
+            logger.error(f"Error during Upstox token refresh: {e}")
+
+    # ------------------------------------------------------------------
     # Pre-market pipeline  (08:30 IST)
     # ------------------------------------------------------------------
 
@@ -263,6 +283,12 @@ class TradingScheduler:
 
     def _add_jobs(self) -> None:
         ist = IST
+
+        self._scheduler.add_job(
+            self._trader.refresh_upstox_token,
+            CronTrigger(hour=8, minute=0, day_of_week="mon-fri", timezone=ist),
+            id="upstox_auth", max_instances=1, replace_existing=True,
+        )
 
         self._scheduler.add_job(
             self._trader.run_pre_market_pipeline,

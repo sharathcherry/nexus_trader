@@ -48,7 +48,18 @@ class MarketDataFetcher:
     _cache_ttl = 300  # 5 minutes TTL
 
     def __init__(self):
-        self.upstox_token = os.getenv("UPSTOX_ACCESS_TOKEN")
+        self.upstox_token = None
+        # Try reading from automated login token file first
+        try:
+            if os.path.exists(".upstox_token"):
+                with open(".upstox_token", "r") as f:
+                    self.upstox_token = f.read().strip()
+        except Exception as e:
+            logger.warning("Could not read .upstox_token: %s", e)
+            
+        if not self.upstox_token:
+            self.upstox_token = os.getenv("UPSTOX_ACCESS_TOKEN")
+            
         self.headers = {
             'Accept': 'application/json',
             'Authorization': f'Bearer {self.upstox_token}'
