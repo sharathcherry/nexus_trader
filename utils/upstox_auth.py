@@ -22,8 +22,8 @@ def get_upstox_access_token():
     Returns the access_token string if successful, else None.
     """
     load_dotenv()
-    api_key = os.getenv("UPSTOX_API_KEY")
-    api_secret = os.getenv("UPSTOX_API_SECRET")
+    api_key = os.getenv("UPSTOX_CLIENT_ID", os.getenv("UPSTOX_API_KEY"))
+    api_secret = os.getenv("UPSTOX_CLIENT_SECRET", os.getenv("UPSTOX_API_SECRET"))
     redirect_uri = os.getenv("UPSTOX_REDIRECT_URI", "http://127.0.0.1")
     mobile = os.getenv("UPSTOX_MOBILE")
     pin = os.getenv("UPSTOX_PIN")

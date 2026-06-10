@@ -78,11 +78,20 @@ class NexusTrader:
             return
             
         try:
-            from utils.upstox_auth import get_upstox_access_token
-            logger.info("Attempting automated Upstox token refresh...")
-            token = get_upstox_access_token()
-            if token:
-                logger.info("Successfully refreshed Upstox access token.")
+            logger.info("Executing upstox_auth.py to refresh access token...")
+            
+            # Get the absolute path to upstox_auth.py relative to this file
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            upstox_script = os.path.join(project_root, "utils", "upstox_auth.py")
+            
+            process = subprocess.run(
+                ["python3", upstox_script],
+                capture_output=True,
+                text=True
+            )
+            
+            if process.returncode == 0:
+                logger.info("Successfully refreshed Upstox access token via script.")
             else:
                 logger.error("Failed to refresh Upstox token. Pre-market may fail.")
         except Exception as e:

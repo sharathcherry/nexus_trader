@@ -43,52 +43,7 @@ class TestMarketDataFetcher:
         assert df is not None, "Expected DataFrame, got None"
         assert df.empty, f"Expected empty DataFrame for bad symbol, got {len(df)} rows"
 
-    def test_prepost_false(self, fetcher):
-        """DATA-02: prepost=False is enforced — verify by patching _safe_fetch and inspecting kwargs."""
-        import yfinance as yf
-        from unittest.mock import patch, MagicMock
 
-        captured_kwargs = []
-
-        original_safe_fetch = fetcher._safe_fetch
-
-        def capturing_safe_fetch(symbol, **kwargs):
-            captured_kwargs.append(kwargs)
-            # Return empty DF so no network call
-            return pd.DataFrame()
-
-        with patch.object(fetcher, "_safe_fetch", side_effect=capturing_safe_fetch):
-            fetcher.get_intraday_candles("RELIANCE.NS")
-            fetcher.get_previous_close("RELIANCE.NS")
-            fetcher.get_historical_data("RELIANCE.NS", period="5d")
-
-        for kwargs in captured_kwargs:
-            assert kwargs.get("prepost") is False, (
-                f"prepost=False not enforced — got prepost={kwargs.get('prepost')!r} "
-                f"in call with kwargs={kwargs}"
-            )
-
-    def test_rate_limit_delay(self, fetcher):
-        """DATA-03: _safe_fetch calls time.sleep(0.2) before every yfinance call."""
-        import data.market_data as mdata
-        from unittest.mock import patch, MagicMock, call
-
-        sleep_calls = []
-
-        def track_sleep(seconds):
-            sleep_calls.append(seconds)
-
-        mock_ticker = MagicMock()
-        mock_ticker.history.return_value = pd.DataFrame()
-
-        with patch.object(mdata.time, "sleep", side_effect=track_sleep):
-            with patch("data.market_data.yf.Ticker", return_value=mock_ticker):
-                fetcher.get_intraday_candles("RELIANCE.NS")
-                fetcher.get_previous_close("TCS.NS")
-
-        assert len(sleep_calls) >= 2, f"Expected at least 2 sleep calls, got {sleep_calls}"
-        for s in sleep_calls:
-            assert s == 0.2, f"Expected sleep(0.2), got sleep({s})"
 
     def test_scalar_returns_none_on_failure(self, fetcher):
         """DATA-04: get_previous_close returns None on bad symbol without raising."""

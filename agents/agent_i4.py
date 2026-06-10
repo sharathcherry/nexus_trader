@@ -61,45 +61,26 @@ class AgentI4:
 
     def _fetch_batch(self, symbols: list[str]) -> dict[str, pd.DataFrame]:
         """
-        Fetch 5-min candles for all symbols in one yf.download() call.
-
-        Rate-limit guard: always sleeps 0.2 s before the network call.
-
-        Multi-ticker download returns MultiIndex columns; single-ticker returns
-        flat columns. Both cases are handled.
-
+        Fetch 5-min candles for all symbols using MarketDataFetcher.
         Returns:
             dict[str, pd.DataFrame] — empty DataFrame for any symbol with no data.
         """
         if not symbols:
             return {}
 
-        time.sleep(0.2)  # rate-limit guard (community consensus minimum)
-
-        raw = yf.download(
-            symbols,
-            period="1d",
-            interval="5m",
-            prepost=False,
-            auto_adjust=False,
-            progress=False,
-        )
-
-        if raw.empty:
-            return {s: pd.DataFrame() for s in symbols}
-
-        # Single ticker: flat column index, no .xs() needed
-        if len(symbols) == 1:
-            return {symbols[0]: raw}
-
-        # Multi-ticker: MultiIndex columns (metric, symbol) → slice per symbol
+        from data.market_data import MarketDataFetcher
+        fetcher = MarketDataFetcher()
         result: dict[str, pd.DataFrame] = {}
+        
         for sym in symbols:
             try:
-                result[sym] = raw.xs(sym, axis=1, level=1)
-            except KeyError:
+                # Use MarketDataFetcher to handle hybrid Upstox/yfinance logic
+                df = fetcher._safe_fetch(sym, period="1d", interval="5m")
+                result[sym] = df if not df.empty else pd.DataFrame()
+            except Exception as e:
+                logger.error("Error fetching data for %s: %s", sym, e)
                 result[sym] = pd.DataFrame()
-
+                
         return result
 
     # ------------------------------------------------------------------
@@ -389,8 +370,9 @@ class AgentI4:
 
         # Nifty 50 index filter: block all long strategies if Nifty is down >0.5%
         try:
-            nifty_df = yf.download("^NSEI", period="2d", interval="1d",
-                                   progress=False, auto_adjust=False)
+            from data.market_data import MarketDataFetcher
+            fetcher = MarketDataFetcher()
+            nifty_df = fetcher._safe_fetch("^NSEI", period="2d", interval="1d")
             if nifty_df is not None and not nifty_df.empty and len(nifty_df) >= 2:
                 prev_close = float(nifty_df["Close"].iloc[-2])
                 last_close = float(nifty_df["Close"].iloc[-1])

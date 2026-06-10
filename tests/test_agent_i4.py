@@ -79,31 +79,20 @@ class TestFetchBatch:
         result = agent._fetch_batch([])
         assert result == {}
 
-    @patch("agents.agent_i4.time.sleep")
-    @patch("agents.agent_i4.yf.download")
-    def test_sleep_called_before_download(self, mock_dl, mock_sleep):
-        """Rate-limit guard: time.sleep(0.2) always called before download."""
-        mock_dl.return_value = pd.DataFrame()
-        agent = _make_agent()
-        agent._fetch_batch(["RELIANCE.NS"])
-        mock_sleep.assert_called_once_with(0.2)
-
-    @patch("agents.agent_i4.time.sleep")
-    @patch("agents.agent_i4.yf.download")
-    def test_single_ticker_returns_flat_df(self, mock_dl, mock_sleep):
-        """Single ticker: returned DataFrame is stored directly (no .xs)."""
+    @patch("data.market_data.MarketDataFetcher._safe_fetch")
+    def test_single_ticker_returns_flat_df(self, mock_safe_fetch):
+        """Single ticker: returned DataFrame is stored directly."""
         df = make_candles([1480.0, 1490.0])
-        mock_dl.return_value = df
+        mock_safe_fetch.return_value = df
         agent = _make_agent()
         result = agent._fetch_batch(["RELIANCE.NS"])
         assert "RELIANCE.NS" in result
         assert not result["RELIANCE.NS"].empty
 
-    @patch("agents.agent_i4.time.sleep")
-    @patch("agents.agent_i4.yf.download")
-    def test_empty_download_returns_empty_dfs(self, mock_dl, mock_sleep):
+    @patch("data.market_data.MarketDataFetcher._safe_fetch")
+    def test_empty_download_returns_empty_dfs(self, mock_safe_fetch):
         """Empty download result maps each symbol to an empty DataFrame."""
-        mock_dl.return_value = pd.DataFrame()
+        mock_safe_fetch.return_value = pd.DataFrame()
         agent = _make_agent()
         result = agent._fetch_batch(["RELIANCE.NS", "TCS.NS"])
         assert result["RELIANCE.NS"].empty
