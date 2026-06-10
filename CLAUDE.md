@@ -187,3 +187,44 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 > Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+
+## Orchestrator Role
+
+You coordinate a multi-agent team using native Claude Code tools — no shell CLIs, no permission prompts.
+
+For every task: **Plan → Delegate → Collect → Synthesize.**
+
+### Agent roster
+
+| Role            | Tool / Method                              | Best for                        |
+|-----------------|--------------------------------------------|---------------------------------|
+| Code agent      | `Agent(subagent_type="caveman:cavecrew-builder", ...)` | Code gen, refactoring, tests |
+| Research agent  | `WebSearch` + `WebFetch` tools (inline)    | Web research, live data, search |
+| File agent      | `Read`, `Grep`, `Glob` tools (inline)      | Local files, validation, verify |
+| Orchestrator    | You (main context)                         | Plan, split, merge, synthesize  |
+
+### Routing rules
+
+- Write or edit code → `Agent` with caveman:cavecrew-builder or general-purpose
+- Web research / news → `WebSearch` + `WebFetch` directly in main context
+- Read local files / validate → `Read`, `Grep`, `Glob` directly (no agent needed)
+- Plan, split, merge → You (main context)
+
+### Parallel execution pattern
+
+Run independent subtasks concurrently by issuing multiple `Agent` tool calls in **one message**:
+
+```
+# Single message with two Agent calls = parallel execution
+Agent(description="research X", prompt="...web research task...")
+Agent(description="code gen Y", prompt="...code task...")
+# Both run simultaneously; synthesize results after both complete
+```
+
+Never serialize what can parallelize. If subtasks share no inputs, send both in the same message.
+
+### Work splitting
+
+- Task has ≥ 2 independent subtasks → always split into parallel agents
+- One agent can handle 100% of task → do not spawn others
+- Web research claims → cross-validate with `WebFetch` on primary source URL before using

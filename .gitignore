@@ -37,3 +37,6 @@ dashboard.html
 # OS
 .DS_Store
 Thumbs.db
+
+# orchestrator run artifacts
+.orch_runs/
