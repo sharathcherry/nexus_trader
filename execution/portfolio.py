@@ -175,7 +175,17 @@ class PaperPortfolio:
             self._set_meta("force_squaredoff", "0")
             self._set_meta("last_trade_date", "")
 
-        # Daily reset: if stored date differs from today, reset daily fields
+        self.reset_daily_state_if_new_day()
+
+    def reset_daily_state_if_new_day(self) -> None:
+        """
+        Reset daily fields if the stored last_trade_date differs from today.
+
+        Cheap guard (one meta read) that only acts when last_trade_date != today.
+        Called from __init__ (via _restore_state), buy(), sell(),
+        force_squareoff_all(), and the 08:30 pre-market job so a long-running
+        service rolls its daily state over without a restart.
+        """
         today = datetime.now(IST).strftime("%Y-%m-%d")
         last_date = self._get_meta("last_trade_date")
         if last_date != today:
@@ -264,6 +274,7 @@ class PaperPortfolio:
         Returns True on success, False on any rejection.
         All rejections are logged at WARNING level with reason.
         """
+        self.reset_daily_state_if_new_day()
         from utils.telegram import notifier
         open_positions = self._get_open_positions()
         open_symbols = [row["symbol"] for row in open_positions]
@@ -376,6 +387,7 @@ class PaperPortfolio:
 
         Returns True on success, False if position not found.
         """
+        self.reset_daily_state_if_new_day()
         position = self._get_position(symbol)
         if position is None:
             logger.warning("SELL REJECTED %s — Symbol not in open positions", symbol)
@@ -485,6 +497,9 @@ class PaperPortfolio:
 
     def force_squareoff_all(self, current_prices: dict[str, float] | None = None) -> int:
         """Close all open positions at market price. Idempotent."""
+        # Must run BEFORE the idempotency check: a stale day-1
+        # force_squaredoff flag would otherwise no-op day-2 squareoff.
+        self.reset_daily_state_if_new_day()
         if current_prices is None:
             current_prices = {}
 

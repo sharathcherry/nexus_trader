@@ -2,8 +2,9 @@
 agents/agent_i6.py — AgentI6: Stateful position monitor.
 
 Called by AgentI4 each polling cycle to:
-  - Detect circuit-breaker conditions (price frozen 3+ cycles)
-  - Execute hard exits (SL hit, target hit)
+  - Execute hard exits (SL hit, target hit) — always, even for circuit-flagged symbols
+  - Detect circuit-breaker conditions (price frozen 3+ cycles) and recover
+    flagged symbols once the price moves again
   - Execute partial exits at 1R profit (GAP_AND_GO, ORB_BREAKOUT only)
   - Apply trailing stop logic per strategy
 
@@ -114,14 +115,6 @@ class AgentI6:
                 )
                 continue
 
-            # --- Skip symbols already in circuit ---
-            if sym in circuit_set:
-                continue
-
-            # --- Circuit detection ---
-            if self._check_circuit(sym, current_price, circuit_set):
-                continue
-
             # --- Hard exit: stop loss ---
             if current_price <= pos["stop_loss"]:
                 portfolio.sell(sym, current_price, pos["qty"], "SL_HIT")
@@ -154,6 +147,23 @@ class AgentI6:
                     strategy=pos.get("strategy", ""),
                 )
                 notifier.send_sell(sym, current_price, pos["qty"], "TARGET_HIT")
+                continue
+
+            # --- Circuit recovery: price moving again removes the flag ---
+            # Must run BEFORE _check_circuit appends, so the deque comparison
+            # uses the previous cycle's price.
+            if sym in circuit_set:
+                d = self._price_history.get(sym)
+                if d and current_price != d[-1]:
+                    circuit_set.discard(sym)
+                    logger.info(
+                        "Circuit recovered for %s — price moving again", sym
+                    )
+
+            # --- Circuit detection ---
+            # Skip partial-exit and trailing-SL logic only; hard exits above
+            # already ran for this position.
+            if self._check_circuit(sym, current_price, circuit_set) or sym in circuit_set:
                 continue
 
             strategy = pos["strategy"]

@@ -107,12 +107,19 @@ def main() -> None:
 
     shutdown_event.wait()
 
-    logger.info("Graceful shutdown: closing open positions...")
+    logger.info("Graceful shutdown: leaving open positions in DB for restart reconciliation...")
     try:
-        # Best-effort: close all open positions at current prices
-        trader._portfolio.force_squareoff_all({})
+        summary = trader._portfolio.get_portfolio_summary()
+        open_positions = summary.get("positions", [])
+        if open_positions:
+            symbols = ", ".join(p["symbol"] for p in open_positions)
+            logger.warning(
+                "Shutdown with %d open position(s) left in DB: %s — "
+                "they will be reconciled on restart or squared off at 15:15.",
+                len(open_positions), symbols,
+            )
     except Exception as e:
-        logger.error("Error during force squareoff on shutdown: %s", e)
+        logger.error("Error reading open positions during shutdown: %s", e)
 
     logger.info("Stopping scheduler...")
     scheduler.shutdown()

@@ -128,6 +128,11 @@ class NexusTrader:
             self._watchlist_ready.set()  # unblock I4 (will find empty watchlist)
             return
 
+        # Roll daily state (daily_pnl, trade_count, is_halted, force_squaredoff)
+        # before the pipeline runs so the new-day reset clears yesterday's
+        # watchlist now, not at the first buy() after today's watchlist saved.
+        self._portfolio.reset_daily_state_if_new_day()
+
         async def _pipeline() -> list[WatchlistEntry]:
             # I0 and I1 run concurrently
             bias_result, raw_candidates = await asyncio.gather(
@@ -235,6 +240,14 @@ class NexusTrader:
             self._watchlist = self._portfolio.load_watchlist()
             if self._watchlist:
                 logger.info("Restored watchlist from database: %d symbols", len(self._watchlist))
+
+        # Restart after pre-market: the 08:30 job never ran in this process,
+        # so the event is unset and AgentI4.run() would wait forever. The
+        # market_session job only fires 09:15-15:15, after the pre-market
+        # window, so an unset event here always means a restart.
+        if not self._watchlist_ready.is_set():
+            logger.info("Watchlist ready event not set (restart after pre-market) — setting from restored state")
+            self._watchlist_ready.set()
 
         agent_i4 = AgentI4(self._watchlist)
         notifier.send_market_open(len(self._watchlist), self._portfolio.capital)
