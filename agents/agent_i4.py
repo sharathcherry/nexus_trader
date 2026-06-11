@@ -75,7 +75,7 @@ class AgentI4:
         for sym in symbols:
             try:
                 # Use MarketDataFetcher to handle hybrid Upstox/yfinance logic
-                df = fetcher._safe_fetch(sym, period="1d", interval="5m")
+                df = fetcher._safe_fetch(sym, is_intraday=True)
                 result[sym] = df if not df.empty else pd.DataFrame()
             except Exception as e:
                 logger.error("Error fetching data for %s: %s", sym, e)
@@ -372,7 +372,7 @@ class AgentI4:
         try:
             from data.market_data import MarketDataFetcher
             fetcher = MarketDataFetcher()
-            nifty_df = fetcher._safe_fetch("^NSEI", period="2d", interval="1d")
+            nifty_df = fetcher._safe_fetch("^NSEI", is_intraday=False, period_days=2)
             if nifty_df is not None and not nifty_df.empty and len(nifty_df) >= 2:
                 prev_close = float(nifty_df["Close"].iloc[-2])
                 last_close = float(nifty_df["Close"].iloc[-1])

@@ -22,6 +22,9 @@ import asyncio
 import concurrent.futures
 import datetime
 from datetime import date
+import os
+import subprocess
+import sys
 import threading
 
 import pytz
@@ -85,17 +88,23 @@ class NexusTrader:
             upstox_script = os.path.join(project_root, "utils", "upstox_auth.py")
             
             process = subprocess.run(
-                ["python3", upstox_script],
+                [sys.executable, upstox_script],
                 capture_output=True,
                 text=True
             )
-            
+
             if process.returncode == 0:
                 logger.info("Successfully refreshed Upstox access token via script.")
             else:
                 logger.error("Failed to refresh Upstox token. Pre-market may fail.")
+                notifier.send_error(
+                    "Upstox Token Refresh Failed",
+                    f"upstox_auth.py exited {process.returncode}: "
+                    f"{process.stderr[-500:] if process.stderr else 'no stderr'}",
+                )
         except Exception as e:
             logger.error(f"Error during Upstox token refresh: {e}")
+            notifier.send_error("Upstox Token Refresh Failed", str(e))
 
     # ------------------------------------------------------------------
     # Pre-market pipeline  (08:30 IST)
@@ -192,7 +201,7 @@ class NexusTrader:
             # Try to read bias from decision log or just use watchlist count
             from data.market_data import MarketDataFetcher
             fetcher = MarketDataFetcher()
-            nifty_df = fetcher._safe_fetch("^NSEI", period="2d", interval="1d")
+            nifty_df = fetcher._safe_fetch("^NSEI", is_intraday=False, period_days=2)
             if not nifty_df.empty and len(nifty_df) >= 2:
                 prev_close = float(nifty_df["Close"].iloc[-2])
                 last_close = float(nifty_df["Close"].iloc[-1])

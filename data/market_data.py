@@ -45,7 +45,8 @@ class MarketDataFetcher:
     """
     # Cache to share data across all fetcher instances
     _fetch_cache: dict[tuple, tuple[float, pd.DataFrame]] = {}
-    _cache_ttl = 300  # 5 minutes TTL
+    _cache_ttl = 300  # 5 minutes TTL (daily data)
+    _cache_ttl_intraday = 45  # below the 60s poll interval so every poll gets fresh data
 
     def __init__(self):
         self.upstox_token = None
@@ -65,14 +66,20 @@ class MarketDataFetcher:
             'Authorization': f'Bearer {self.upstox_token}'
         } if self.upstox_token else {}
 
-    def _safe_fetch_yf(self, symbol: str, **kwargs) -> pd.DataFrame:
-        """Internal helper for yfinance."""
+    def _safe_fetch_yf(self, symbol: str, ttl: float | None = None, **kwargs) -> pd.DataFrame:
+        """Internal helper for yfinance.
+
+        ttl: cache freshness window in seconds. Defaults to the daily TTL
+        (_cache_ttl). Not part of the cache key and never forwarded to yfinance.
+        """
+        if ttl is None:
+            ttl = self._cache_ttl
         cache_key = ("YF", symbol, tuple(sorted(kwargs.items())))
         current_time = time.time()
 
         if cache_key in self._fetch_cache:
             cache_ts, cached_df = self._fetch_cache[cache_key]
-            if current_time - cache_ts < self._cache_ttl:
+            if current_time - cache_ts < ttl:
                 return cached_df.copy()
 
         time.sleep(_RATE_LIMIT_DELAY)
@@ -131,9 +138,10 @@ class MarketDataFetcher:
         """
         cache_key = ("HYBRID", symbol, is_intraday, period_days)
         current_time = time.time()
+        ttl = self._cache_ttl_intraday if is_intraday else self._cache_ttl
         if cache_key in self._fetch_cache:
             cache_ts, cached_df = self._fetch_cache[cache_key]
-            if current_time - cache_ts < self._cache_ttl:
+            if current_time - cache_ts < ttl:
                 return cached_df.copy()
 
         instrument_key = UPSTOX_KEYS.get(symbol)
@@ -159,7 +167,10 @@ class MarketDataFetcher:
         if df is None or df.empty:
             logger.debug("Fetching %s via yfinance fallback", symbol)
             if is_intraday:
-                df = self._safe_fetch_yf(symbol, period="1d", interval="5m", prepost=False, auto_adjust=True)
+                df = self._safe_fetch_yf(
+                    symbol, ttl=self._cache_ttl_intraday,
+                    period="1d", interval="5m", prepost=False, auto_adjust=True,
+                )
                 if not df.empty and df.index.tz is None:
                     df.index = df.index.tz_localize("UTC").tz_convert(IST)
                 elif not df.empty:
