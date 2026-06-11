@@ -42,3 +42,25 @@ Thumbs.db
 
 # orchestrator run artifacts
 .orch_runs/
+
+# Secrets & Upstox login-flow artifacts (NEVER commit)
+scratch/
+*.fuse_hidden*
+upstox_page.html
+upstox_map.json
+upstox_*.png
+.upstox_token
+
+# Internal planning / bug-tracking (not for public repo)
+.planning/
+BUGS.md
+
+# Tests & test config (excluded from published repo)
+tests/
+pytest.ini
+test_orchestrator_*.py
+
+# Runtime DBs & misc
+*.db
+e2e_smoke_portfolio.db
+logs/index.html
