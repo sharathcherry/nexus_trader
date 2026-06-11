@@ -178,7 +178,7 @@ class AgentI4:
                 if self.nifty_bearish and not was_bearish:
                     logger.warning("NIFTY BEARISH FILTER ACTIVE: %.2f%% -- blocking long setups", nifty_chg)
                     from utils.telegram import notifier
-                    notifier.send_error("Nifty Filter", f"Nifty down {nifty_chg:.2f}% -- blocking longs.")
+                    notifier.send_alert("Nifty Filter", f"Nifty down {nifty_chg:.2f}% -- blocking longs.")
                 elif not self.nifty_bearish and was_bearish:
                     logger.info("NIFTY BEARISH FILTER CLEARED: %.2f%% -- unblocking longs", nifty_chg)
         except Exception as e:

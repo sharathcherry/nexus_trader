@@ -193,6 +193,9 @@ class TelegramNotifier:
     def send_error(self, context: str, error: str) -> None:
         self._send(f"<b>nexus_trader -- Error</b>\nContext : {context}\nError   : {str(error)[:300]}")
 
+    def send_alert(self, title: str, message: str) -> None:
+        self._send(f"<b>nexus_trader -- Alert</b>\n{title} : {message}")
+
     def send_review(self, verdict: str, summary: str) -> None:
         self._send(
             f"<b>nexus_trader -- Daily Review</b>\n"
