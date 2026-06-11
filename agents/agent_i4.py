@@ -4,7 +4,7 @@ agents/agent_i4.py — AgentI4: Signal engine with 60-second async polling loop.
 Responsibilities:
   - Fetch 5-min OHLCV candles for all watchlist symbols each cycle
   - Delegate position monitoring to AgentI6
-  - Evaluate entry signals (GAP_AND_GO, ORB_BREAKOUT, GAP_FILL, VWAP_RECLAIM)
+  - Evaluate entry signals (GAP_AND_GO, ORB_BREAKOUT, GAP_FILL, VWAP_RECLAIM, RELATIVE_STRENGTH)
   - Apply ORB level override once 09:30 IST is reached
   - Force squareoff all positions when loop exits at 15:15 IST
 
@@ -26,6 +26,7 @@ from agents.agent_i6 import AgentI6
 from agents.models import WatchlistEntry
 from data.indicators import Indicators
 from config import config
+from utils.brokerage import SLIPPAGE_PCT
 from utils.logger import setup_logger
 from utils.telegram import notifier
 from utils.decision_logger import dlog
@@ -288,10 +289,19 @@ class AgentI4:
             elif strategy == "ORB_BREAKOUT":
                 signal = current_price >= entry.entry_trigger
             elif strategy == "VWAP_RECLAIM":
+                # H4 fix: require a genuine VWAP reclaim — price was below VWAP
+                # on the previous candle and now closes above it.  A simple
+                # "price > VWAP" would fire immediately at 09:30 for most stocks;
+                # requiring the crossover filters out entries where price never
+                # dipped below VWAP in the first place.
                 df_session = df.between_time("09:15", "15:30")
-                if not df_session.empty:
-                    vwap_val = Indicators.vwap(df_session).iloc[-1]
-                    signal = current_price > vwap_val
+                if len(df_session) >= 2:
+                    vwap_series = Indicators.vwap(df_session)
+                    prev_close = float(df_session["Close"].iloc[-2])
+                    prev_vwap = float(vwap_series.iloc[-2])
+                    curr_vwap = float(vwap_series.iloc[-1])
+                    # True reclaim: was below VWAP last candle, now above
+                    signal = (prev_close < prev_vwap) and (current_price > curr_vwap)
                 else:
                     signal = False
             elif strategy == "GAP_FILL":
@@ -299,6 +309,18 @@ class AgentI4:
                 if len(df_session) >= 3:
                     low_15m = df_session["Low"].iloc[:3].min()
                     signal = current_price > low_15m
+                else:
+                    signal = False
+            elif strategy == "RELATIVE_STRENGTH":
+                # Dual confirmation: price must be above session VWAP AND
+                # current volume ratio must show elevated participation
+                # (>= 1.5x average).  This filters out low-liquidity gap drifts
+                # and ensures institutional follow-through.
+                df_session = df.between_time("09:15", "15:30")
+                if not df_session.empty:
+                    vwap_val = float(Indicators.vwap(df_session).iloc[-1])
+                    vol_ratio = Indicators.volume_ratio(df_session)
+                    signal = (current_price > vwap_val) and (vol_ratio >= 1.5)
                 else:
                     signal = False
             else:
@@ -323,14 +345,17 @@ class AgentI4:
                 )
                 continue
 
-            # Apply 0.15% slippage to simulate real NSE market-order fills
-            _SLIPPAGE_PCT = 0.0015
-            fill_price = round(current_price * (1 + _SLIPPAGE_PCT), 2)
-            
-            # Chase guard
-            if fill_price > entry.entry_trigger * 1.01:
-                logger.debug("BUY SKIPPED %s — chase guard hit (fill %.2f > trigger %.2f * 1.01)", sym, fill_price, entry.entry_trigger)
-                continue
+            # Apply entry slippage to simulate real NSE market-order fills
+            fill_price = round(current_price * (1 + SLIPPAGE_PCT), 2)
+
+            # H3 Chase guard: only applies to price-level trigger strategies
+            # (GAP_AND_GO, ORB_BREAKOUT).  VWAP_RECLAIM and GAP_FILL use dynamic
+            # signal conditions — their entry_trigger is a pre-market placeholder
+            # and the chase-distance concept doesn't apply.
+            if strategy in ("GAP_AND_GO", "ORB_BREAKOUT"):
+                if fill_price > entry.entry_trigger * 1.01:
+                    logger.debug("BUY SKIPPED %s — chase guard hit (fill %.2f > trigger %.2f * 1.01)", sym, fill_price, entry.entry_trigger)
+                    continue
                 
             # Re-validate R:R with actual fill price
             denom = fill_price - entry.stop_loss

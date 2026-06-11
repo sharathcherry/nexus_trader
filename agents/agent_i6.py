@@ -5,14 +5,15 @@ Called by AgentI4 each polling cycle to:
   - Execute hard exits (SL hit, target hit) — always, even for circuit-flagged symbols
   - Detect circuit-breaker conditions (price frozen 3+ cycles) and recover
     flagged symbols once the price moves again
-  - Execute partial exits at 1R profit (GAP_AND_GO, ORB_BREAKOUT only)
+  - Execute partial exits at 1R profit (GAP_AND_GO, ORB_BREAKOUT, RELATIVE_STRENGTH only)
   - Apply trailing stop logic per strategy
 
 Partial exit and trailing SL are strategy-specific:
-  GAP_AND_GO   — partial exit + ATR-based trailing SL
-  ORB_BREAKOUT — partial exit + breakeven trailing SL
-  GAP_FILL     — fixed SL, no partial exit, no trailing SL
-  VWAP_RECLAIM — fixed SL, no partial exit, no trailing SL
+  GAP_AND_GO         — partial exit + ATR-based trailing SL
+  ORB_BREAKOUT       — partial exit + breakeven trailing SL
+  RELATIVE_STRENGTH  — partial exit + ATR-based trailing SL (same as GAP_AND_GO)
+  GAP_FILL           — fixed SL, no partial exit, no trailing SL
+  VWAP_RECLAIM       — fixed SL, no partial exit, no trailing SL
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import pandas as pd
 from collections import deque
 
 from config import config
+from utils.brokerage import SLIPPAGE_PCT, calculate_brokerage
 from utils.logger import setup_logger
 from utils.telegram import notifier
 from utils.decision_logger import dlog
@@ -116,12 +118,11 @@ class AgentI6:
                 continue
 
             # --- Hard exit: stop loss ---
+            # Fill at min(current_price, stop_loss) with adverse slippage (selling lower).
             if current_price <= pos["stop_loss"]:
-                _SLIPPAGE_PCT = 0.0015
-                fill_price = round(min(current_price, pos["stop_loss"]) * (1 - _SLIPPAGE_PCT), 2)
+                fill_price = round(min(current_price, pos["stop_loss"]) * (1 - SLIPPAGE_PCT), 2)
                 portfolio.sell(sym, fill_price, pos["qty"], "SL_HIT")
                 actions.append(f"SL_HIT:{sym}@{fill_price:.2f}")
-                from utils.brokerage import calculate_brokerage
                 charges = calculate_brokerage(pos["entry_price"], fill_price, pos["qty"])
                 gross_pnl = (fill_price - pos["entry_price"]) * pos["qty"]
                 dlog.sell_decision(
@@ -138,12 +139,12 @@ class AgentI6:
                 continue
 
             # --- Hard exit: target ---
+            # Simulate a limit-order fill: we sell at the target price (not the
+            # potentially-higher current price) and apply symmetric exit slippage.
             if current_price >= pos["target"]:
-                _SLIPPAGE_PCT = 0.0015
-                fill_price = round(pos["target"] * (1 - _SLIPPAGE_PCT), 2)
+                fill_price = round(pos["target"] * (1 - SLIPPAGE_PCT), 2)
                 portfolio.sell(sym, fill_price, pos["qty"], "TARGET_HIT")
                 actions.append(f"TARGET_HIT:{sym}@{fill_price:.2f}")
-                from utils.brokerage import calculate_brokerage
                 charges = calculate_brokerage(pos["entry_price"], fill_price, pos["qty"])
                 gross_pnl = (fill_price - pos["entry_price"]) * pos["qty"]
                 dlog.sell_decision(
@@ -179,8 +180,9 @@ class AgentI6:
             strategy = pos["strategy"]
 
             # --- Partial exit ---
-            # Only for GAP_AND_GO and ORB_BREAKOUT; not for GAP_FILL / VWAP_RECLAIM
-            if strategy in ("GAP_AND_GO", "ORB_BREAKOUT"):
+            # GAP_AND_GO, ORB_BREAKOUT, RELATIVE_STRENGTH all use 1R partial exit.
+            # GAP_FILL and VWAP_RECLAIM keep fixed SL throughout.
+            if strategy in ("GAP_AND_GO", "ORB_BREAKOUT", "RELATIVE_STRENGTH"):
                 watchlist_entry = watchlist_map.get(sym)
                 if watchlist_entry is not None:
                     # Use original SL from watchlist (not the potentially trailed pos SL)
@@ -191,8 +193,7 @@ class AgentI6:
                     if not pos["partial_exited"] and current_price >= partial_exit_threshold:
                         exit_qty = pos["qty"] // 2
                         if exit_qty > 0:
-                            _SLIPPAGE_PCT = 0.0015
-                            fill_price = round(current_price * (1 - _SLIPPAGE_PCT), 2)
+                            fill_price = round(current_price * (1 - SLIPPAGE_PCT), 2)
                             portfolio.partial_exit(
                                 sym, fill_price, exit_qty, "PARTIAL_EXIT"
                             )
@@ -223,8 +224,9 @@ class AgentI6:
                 )
                 continue
 
-            # Both GAP_AND_GO and ORB_BREAKOUT move SL to breakeven on partial exit
-            if strategy in ("GAP_AND_GO", "ORB_BREAKOUT"):
+            # GAP_AND_GO, ORB_BREAKOUT, RELATIVE_STRENGTH all move SL to breakeven
+            # once a partial exit has been taken.
+            if strategy in ("GAP_AND_GO", "ORB_BREAKOUT", "RELATIVE_STRENGTH"):
                 if _pos["partial_exited"] and pos["entry_price"] > _pos["stop_loss"]:
                     dlog.sl_update(
                         symbol=sym, strategy=strategy,
@@ -238,15 +240,17 @@ class AgentI6:
                         f"BREAKEVEN_SL:{sym}@{pos['entry_price']:.2f}"
                     )
 
-            # GAP_AND_GO additional ATR-based trailing SL
-            if strategy == "GAP_AND_GO":
+            # GAP_AND_GO and RELATIVE_STRENGTH: ATR-based trailing SL
+            # RELATIVE_STRENGTH mirrors GAP_AND_GO — the momentum continuation
+            # thesis is the same; trail at 0.75x ATR once price exceeds entry+ATR.
+            if strategy in ("GAP_AND_GO", "RELATIVE_STRENGTH"):
                 atr = watchlist_entry.atr
                 if atr and atr > 0:
                     if current_price >= pos["entry_price"] + atr:
                         new_sl = current_price - 0.75 * atr
                         if new_sl > _pos["stop_loss"]:
                             dlog.sl_update(
-                                symbol=sym, strategy="GAP_AND_GO",
+                                symbol=sym, strategy=strategy,
                                 old_sl=_pos["stop_loss"], new_sl=new_sl,
                                 current_price=current_price,
                                 reason=f"price Rs{current_price:.2f} >= entry+ATR Rs{pos['entry_price']+atr:.2f}; trail at 0.75xATR",
@@ -256,6 +260,6 @@ class AgentI6:
                                 f"TRAIL_SL:{sym} new_sl={new_sl:.2f}"
                             )
 
-            # GAP_FILL and VWAP_RECLAIM: fixed SL, no trailing
+            # GAP_FILL and VWAP_RECLAIM: fixed SL, no partial exit, no trailing
 
         return actions

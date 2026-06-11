@@ -2,14 +2,36 @@
 AgentI3 -- Strategy Assignment + ATR Price Levels + Watchlist Builder.
 
 Strategy rule table (priority order):
-  BULLISH  + gap > 3.0%                   -> GAP_AND_GO
-  BULLISH  + 2.0% < gap <= 3.0%           -> ORB_BREAKOUT
-  NEUTRAL  + gap > 2.0%                   -> ORB_BREAKOUT
-  BEARISH  + gap > 2.0%  (gap-UP stock)   -> SKIP (chasing longs against macro is risky)
-  BEARISH  + gap < -2.0% (gap-DOWN stock) -> GAP_FILL (mean-reversion)
-  1.5% <= abs(gap) <= 3.0% + gap-DOWN     -> GAP_FILL
-  abs(gap) < 2.0%                         -> VWAP_RECLAIM
-  Fallback                                -> VWAP_RECLAIM
+  BULLISH  + gap > 5.0% + gap_score top-tier       -> RELATIVE_STRENGTH
+  BULLISH  + gap > 3.0%                             -> GAP_AND_GO
+  BULLISH  + 2.0% < gap <= 3.0%                    -> ORB_BREAKOUT
+  NEUTRAL  + gap > 5.0% + gap_score top-tier       -> RELATIVE_STRENGTH
+  NEUTRAL  + gap > 2.0%                             -> ORB_BREAKOUT
+  BEARISH  + gap > 2.0%  (gap-UP stock)             -> SKIP (chasing longs against macro is risky)
+  BEARISH  + gap < -2.0% (gap-DOWN stock)           -> GAP_FILL (mean-reversion)
+  1.5% <= abs(gap) <= 3.0% + gap-DOWN               -> GAP_FILL
+  abs(gap) < 2.0%                                   -> VWAP_RECLAIM
+  Fallback                                          -> VWAP_RECLAIM
+
+RELATIVE_STRENGTH setup thesis:
+  On days when the broader market is BULLISH or NEUTRAL, some stocks gap up
+  by more than 5% with exceptional volume (gap_score indicates top-tier
+  relative strength vs the Nifty index).  These names are already outperforming
+  the index before 09:15 and tend to continue through 12:00 as institutional
+  flows pile into winners.
+
+  Entry condition (evaluated intraday): price above session VWAP AND volume
+  ratio >= 1.5x the 20-period average, confirming that the gap is backed by
+  genuine demand rather than low-liquidity drift.
+
+  SL/Target: 1.0× ATR stop below entry trigger; 2.5× ATR target above it.
+  R:R ≥ 2.5 (wider than GAP_AND_GO) because the entry confirmation requires
+  both VWAP position AND volume, arriving after the open — by then price has
+  already moved, so we demand a larger payoff.
+
+  Exit management: mirrors GAP_AND_GO — partial exit at 1R, then ATR trail.
+  Same risk rules apply: 1% portfolio risk, R:R ≥ 1.5, max 5 positions,
+  09:30 entry gate, 14:00 cutoff.
 
 GAP_FILL guard: target = prev_close is only valid when stock is gapping DOWN.
 The R:R check already catches this, but we guard explicitly for clarity.
@@ -137,9 +159,21 @@ def _assign_strategy(candidate: GapCandidate, bias: MarketBias) -> str:
 
     gap_pct > 0: stock gapping UP today
     gap_pct < 0: stock gapping DOWN today
+
+    RELATIVE_STRENGTH fires first on BULLISH/NEUTRAL days when the stock has
+    both a large gap (> 5%) and an exceptional gap_score (> 8.0, implying
+    strong volume-weighted relative strength vs the index).
     """
     abs_gap = abs(candidate.gap_pct)
     gap_is_up = candidate.gap_pct > 0
+
+    # --- RELATIVE_STRENGTH: top-tier gap-up with strong volume score ---
+    # Only for long trades (gap-up) on constructive market days.
+    # gap_score = abs(gap_pct) * min(prev_volume/500k, 3.0), so score > 8
+    # means gap > 5% with volume > 1.6x average — genuine institutional demand.
+    if bias.bias in ("BULLISH", "NEUTRAL") and gap_is_up:
+        if abs_gap > 5.0 and candidate.gap_score > 8.0:
+            return "RELATIVE_STRENGTH"
 
     if bias.bias == "BULLISH":
         if abs_gap > 3.0:
@@ -192,6 +226,15 @@ def _compute_levels(
         entry_trigger = round(p * 1.005, 2)
         stop_loss = round(pc - 0.5 * atr, 2)
         target = round(entry_trigger + 2.0 * atr, 2)
+
+    elif strategy == "RELATIVE_STRENGTH":
+        # Entry trigger slightly above pre-market price (confirmed by VWAP + volume
+        # intraday signal, so the trigger itself is just a placeholder like
+        # VWAP_RECLAIM).  Wide target (2.5x ATR) demanded because the entry
+        # arrives after significant pre-market move — payoff must justify the gap.
+        entry_trigger = round(p * 1.002, 2)
+        stop_loss = round(entry_trigger - 1.0 * atr, 2)
+        target = round(entry_trigger + 2.5 * atr, 2)
 
     else:  # VWAP_RECLAIM
         entry_trigger = round(p * 1.001, 2)
