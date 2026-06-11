@@ -224,6 +224,110 @@ class MarketDataFetcher:
             logger.error("get_premarket_price(%s): %s", symbol, exc)
             return None
 
+    def get_preopen_snapshot(self, symbols: list[str]) -> dict[str, dict]:
+        """
+        Batch pre-open snapshot via Upstox Full Market Quote.
+
+        Returns ``{symbol: {"price": float, "prev_close": float}}`` for every
+        requested symbol that resolves to a mapped instrument key and carries
+        positive pre-open prices. Returns ``{}`` on any failure (empty symbol
+        list, no token, non-200 response, exception, or empty data) and never
+        raises -- matching the Dict error contract documented in the header.
+
+        The gap at pre-open is ``(price - prev_close) / prev_close`` where
+        ``price`` is the Upstox ``last_price`` and ``prev_close`` is
+        ``ohlc.close`` (the previous trading day's close during the pre-open
+        window).
+
+        [RUNTIME-VERIFY -- A1 caveat]: Upstox ``last_price`` / ``ohlc.open`` are
+        ASSUMED to carry the NSE pre-open Indicative Equilibrium Price (IEP)
+        during 09:00-09:15 IST; Upstox does not name an explicit "IEP" field.
+        Confirm against one live pre-open snapshot before relying on it. The
+        ``price <= 0`` / ``prev_close <= 0`` guard below ensures a wrong
+        assumption degrades to skipping symbols (then a 09:15-only scan),
+        never bad trades.
+
+        Uses a single GET (Upstox accepts up to 500 keys per call) so the whole
+        Nifty-100 universe fetches in one HTTP request.
+        """
+        try:
+            if not symbols or not self.headers:
+                return {}
+
+            # Map requested symbols -> instrument keys; skip unmapped symbols.
+            sym_to_key: dict[str, str] = {}
+            for sym in symbols:
+                key = UPSTOX_KEYS.get(sym)
+                if key:
+                    sym_to_key[sym] = key
+            if not sym_to_key:
+                return {}
+
+            # Reverse lookups so response keys in either "NSE_EQ|INE..." or
+            # "NSE_EQ:SYMBOL" form can be matched back to the requested symbol.
+            #   exact_lookup: full instrument key -> symbol
+            #   tail_lookup:  ISIN/tail after the "|" or ":" separator -> symbol
+            #   base_lookup:  bare symbol (sans ".NS") -> symbol
+            exact_lookup: dict[str, str] = {}
+            tail_lookup: dict[str, str] = {}
+            base_lookup: dict[str, str] = {}
+            for sym, key in sym_to_key.items():
+                exact_lookup[key] = sym
+                tail = key.replace("NSE_EQ|", "").replace("NSE_EQ:", "")
+                tail_lookup[tail] = sym
+                base_lookup[sym.replace(".NS", "")] = sym
+
+            cache_key = ("PREOPEN", tuple(sorted(sym_to_key.values())))
+            current_time = time.time()
+            if cache_key in self._fetch_cache:
+                cache_ts, cached = self._fetch_cache[cache_key]
+                if current_time - cache_ts < 30:  # short TTL for live pre-open
+                    return dict(cached)
+
+            url = "https://api.upstox.com/v2/market-quote/quotes"
+            params = {"instrument_key": ",".join(sym_to_key.values())}
+            resp = requests.get(url, headers=self.headers, params=params, timeout=10)
+            if resp.status_code != 200:
+                logger.warning(
+                    "get_preopen_snapshot: Upstox API error %d: %s",
+                    resp.status_code, getattr(resp, "text", ""),
+                )
+                return {}
+
+            data = resp.json().get("data", {})
+            if not data:
+                return {}
+
+            result: dict[str, dict] = {}
+            for resp_key, entry in data.items():
+                # Resolve the response key back to a requested symbol.
+                sym = exact_lookup.get(resp_key)
+                if sym is None:
+                    tail = resp_key.replace("NSE_EQ|", "").replace("NSE_EQ:", "")
+                    sym = tail_lookup.get(tail) or base_lookup.get(tail)
+                if sym is None:
+                    continue  # cannot resolve -> skip rather than guess
+
+                last_price = entry.get("last_price")
+                ohlc = entry.get("ohlc") or {}
+                prev_close = ohlc.get("close")
+                if last_price is None or prev_close is None:
+                    continue
+                last_price = float(last_price)
+                prev_close = float(prev_close)
+                # Guard bogus pre-match values that would yield a ~100% gap.
+                if last_price <= 0 or prev_close <= 0:
+                    continue
+
+                result[sym] = {"price": last_price, "prev_close": prev_close}
+
+            if result:
+                self._fetch_cache[cache_key] = (current_time, dict(result))
+            return result
+        except Exception as exc:
+            logger.error("get_preopen_snapshot: %s", exc)
+            return {}
+
     def get_intraday_candles(self, symbol: str) -> pd.DataFrame:
         """
         Return today's intraday 5-min candles from 09:15 IST onward.
