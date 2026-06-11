@@ -22,7 +22,7 @@ import pytz
 
 DB_PATH  = Path("execution/portfolio.db")
 PERF_DIR = Path("logs/performance")
-LOG_PATH = Path("logs/nexus_trader.log")
+LOG_PATH = Path("logs/nexus.log")
 OUT_PATH = Path("logs/dashboard.html")
 IDX_PATH = Path("logs/index.html")
 IST      = pytz.timezone("Asia/Kolkata")
