@@ -23,8 +23,10 @@ execution/portfolio.db-shm
 
 # Logs (runtime output -- never commit)
 logs/*.log
+logs/nexus.log.*
 logs/performance/
 logs/backtest/
+logs/decisions/
 
 # Dashboard (generated)
 logs/dashboard.html
