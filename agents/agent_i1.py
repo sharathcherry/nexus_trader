@@ -28,13 +28,34 @@ IST = pytz.timezone("Asia/Kolkata")
 fetcher = MarketDataFetcher()
 
 
-async def run() -> list[GapCandidate]:
-    return await asyncio.to_thread(_scan_universe)
+async def run(price_source: str = "live") -> list[GapCandidate]:
+    return await asyncio.to_thread(_scan_universe, price_source=price_source)
 
 
-def _scan_universe() -> list[GapCandidate]:
+def _scan_universe(price_source: str = "live") -> list[GapCandidate]:
+    """
+    Scan the universe for gap candidates.
+
+    price_source:
+      "live"    -- (default) compute the opening gap from the first live 5-min
+                   candle open vs prev_close and apply the Filter-4 volume
+                   conviction check. Preserves the historical behaviour.
+      "preopen" -- source premarket_price + prev_close from a single batch
+                   get_preopen_snapshot() call (Upstox pre-open IEP). Filter-4
+                   is skipped (no intraday bars exist yet). Returns [] if the
+                   snapshot is empty so the caller degrades to a 09:15-only scan.
+    """
     candidates: list[GapCandidate] = []
     universe = get_universe()
+
+    # Pre-open path: one batch snapshot up front; degrade if empty.
+    snapshot: dict[str, dict] = {}
+    if price_source == "preopen":
+        symbols = [s.get("symbol") for s in universe if s.get("symbol")]
+        snapshot = fetcher.get_preopen_snapshot(symbols)
+        if not snapshot:
+            logger.warning("Pre-open snapshot empty -- skipping provisional scan")
+            return []
 
     for stock in universe:
         symbol = stock.get("symbol")
@@ -44,9 +65,20 @@ def _scan_universe() -> list[GapCandidate]:
             continue
 
         try:
-            prev_close = fetcher.get_previous_close(symbol)
-            if prev_close is None:
-                continue
+            if price_source == "preopen":
+                snap = snapshot.get(symbol)
+                if snap is None:
+                    continue  # symbol absent from snapshot
+                premarket_price = snap.get("price")
+                prev_close = snap.get("prev_close")
+                if prev_close is None:
+                    prev_close = fetcher.get_previous_close(symbol)
+                if premarket_price is None or prev_close is None:
+                    continue
+            else:
+                prev_close = fetcher.get_previous_close(symbol)
+                if prev_close is None:
+                    continue
 
             hist = fetcher.get_historical_data(symbol, period="5d")
             if len(hist) < 2:
@@ -54,9 +86,16 @@ def _scan_universe() -> list[GapCandidate]:
 
             prev_volume = hist["Volume"].iloc[-2]
 
-            premarket_price = fetcher.get_premarket_price(symbol)
-            if premarket_price is None:
-                continue
+            intraday_df = None
+            if price_source == "live":
+                # True opening gap from the first live 5-min candle open.
+                intraday_df = fetcher.get_intraday_candles(symbol)
+                if intraday_df is not None and not intraday_df.empty:
+                    premarket_price = float(intraday_df["Open"].iloc[0])
+                else:
+                    premarket_price = fetcher.get_premarket_price(symbol)
+                if premarket_price is None:
+                    continue
 
             gap_pct = (premarket_price - prev_close) / prev_close * 100
 
@@ -73,11 +112,9 @@ def _scan_universe() -> list[GapCandidate]:
                 continue
 
             # --- Filter 4: today's volume ratio (conviction filter) ---
-            # Fetch today's intraday candles to measure current session volume
-            # vs the 20-bar rolling average. Gaps with sub-average volume are
-            # often fakeouts -- require at least MIN_VOLUME_RATIO confirmation.
-            intraday_df = fetcher.get_intraday_candles(symbol)
-            if not intraday_df.empty:
+            # Live path only -- the pre-open path has no intraday bars yet, so
+            # it is skipped (mirrors the prior vol_ratio==0 "allow through").
+            if price_source == "live" and intraday_df is not None and not intraday_df.empty:
                 vol_ratio = Indicators.volume_ratio(intraday_df, lookback=20)
                 if vol_ratio > 0 and vol_ratio < config.MIN_VOLUME_RATIO:
                     logger.debug(
