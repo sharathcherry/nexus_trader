@@ -667,20 +667,24 @@ class PaperPortfolio:
         if conn is None:
             return {"capital": float(config.CAPITAL), "positions": [], "trades": []}
 
-        row = conn.execute("SELECT value FROM meta WHERE key = 'capital'").fetchone()
-        capital = float(row["value"]) if row else float(config.CAPITAL)
+        # N-H3: try/finally so a mid-query OperationalError (e.g. DB locked
+        # during force-squareoff) cannot leak the connection handle.
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'capital'").fetchone()
+            capital = float(row["value"]) if row else float(config.CAPITAL)
 
-        positions = [dict(r) for r in conn.execute(
-            "SELECT * FROM positions ORDER BY entry_time DESC"
-        ).fetchall()]
+            positions = [dict(r) for r in conn.execute(
+                "SELECT * FROM positions ORDER BY entry_time DESC"
+            ).fetchall()]
 
-        today = datetime.now(IST).strftime("%Y-%m-%d")
-        trades = [dict(r) for r in conn.execute(
-            "SELECT * FROM trades WHERE exit_time LIKE ? ORDER BY exit_time DESC",
-            (f"{today}%",),
-        ).fetchall()]
+            today = datetime.now(IST).strftime("%Y-%m-%d")
+            trades = [dict(r) for r in conn.execute(
+                "SELECT * FROM trades WHERE exit_time LIKE ? ORDER BY exit_time DESC",
+                (f"{today}%",),
+            ).fetchall()]
+        finally:
+            conn.close()
 
-        conn.close()
         return {"capital": capital, "positions": positions, "trades": trades}
 
     def get_daily_report(self) -> dict:
@@ -689,16 +693,19 @@ class PaperPortfolio:
         if conn is None:
             return {"daily_pnl": 0.0, "trades": []}
 
-        row = conn.execute("SELECT value FROM meta WHERE key = 'daily_pnl'").fetchone()
-        daily_pnl = float(row["value"]) if row else 0.0
+        # N-H3: try/finally so a mid-query exception cannot leak the handle.
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'daily_pnl'").fetchone()
+            daily_pnl = float(row["value"]) if row else 0.0
 
-        today = datetime.now(IST).strftime("%Y-%m-%d")
-        trades = [dict(r) for r in conn.execute(
-            "SELECT * FROM trades WHERE exit_time LIKE ? ORDER BY exit_time DESC",
-            (f"{today}%",),
-        ).fetchall()]
+            today = datetime.now(IST).strftime("%Y-%m-%d")
+            trades = [dict(r) for r in conn.execute(
+                "SELECT * FROM trades WHERE exit_time LIKE ? ORDER BY exit_time DESC",
+                (f"{today}%",),
+            ).fetchall()]
+        finally:
+            conn.close()
 
-        conn.close()
         return {"daily_pnl": daily_pnl, "trades": trades}
 
     # ------------------------------------------------------------------

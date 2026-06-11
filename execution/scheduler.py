@@ -71,6 +71,7 @@ class NexusTrader:
         self._watchlist: list[WatchlistEntry] = []
         self._bias = None
         self._candidate_pool: list = []
+        self._session_started = False  # N-H2 one-shot guard for market session
         logger.info(f"NexusTrader initialized (dry_run={dry_run})")
 
     # ------------------------------------------------------------------
@@ -187,6 +188,10 @@ class NexusTrader:
             return
 
         self._portfolio.reset_daily_state_if_new_day()
+        # New trading day: re-arm the one-shot market-session guard (N-H2) and
+        # the watchlist-ready gate so today's session can start fresh.
+        self._session_started = False
+        self._watchlist_ready.clear()
 
         try:
             self._bias = self._run_async(agent_i0.run)
@@ -318,6 +323,15 @@ class NexusTrader:
         if self.dry_run:
             logger.info("DRY-RUN mode — skipping live market session")
             return
+
+        # N-H2: the market_session job fires every minute 09:15-15:15 with
+        # max_instances=1 (blocks concurrent re-entry while the loop runs). But
+        # if AgentI4.run() ever returns before 15:15 (early exit, empty
+        # watchlist, restart), the next minute tick would relaunch a fresh
+        # session and re-send market-open. One-shot guard prevents that.
+        if getattr(self, "_session_started", False):
+            return
+        self._session_started = True
 
         # Try to restore watchlist from DB on restart
         if not self._watchlist:
