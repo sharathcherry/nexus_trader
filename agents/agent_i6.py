@@ -22,6 +22,7 @@ import pandas as pd
 from collections import deque
 
 from config import config
+from utils.brokerage import SLIPPAGE_PCT, calculate_brokerage
 from utils.logger import setup_logger
 from utils.telegram import notifier
 from utils.decision_logger import dlog
@@ -116,12 +117,11 @@ class AgentI6:
                 continue
 
             # --- Hard exit: stop loss ---
+            # Fill at min(current_price, stop_loss) with adverse slippage (selling lower).
             if current_price <= pos["stop_loss"]:
-                _SLIPPAGE_PCT = 0.0015
-                fill_price = round(min(current_price, pos["stop_loss"]) * (1 - _SLIPPAGE_PCT), 2)
+                fill_price = round(min(current_price, pos["stop_loss"]) * (1 - SLIPPAGE_PCT), 2)
                 portfolio.sell(sym, fill_price, pos["qty"], "SL_HIT")
                 actions.append(f"SL_HIT:{sym}@{fill_price:.2f}")
-                from utils.brokerage import calculate_brokerage
                 charges = calculate_brokerage(pos["entry_price"], fill_price, pos["qty"])
                 gross_pnl = (fill_price - pos["entry_price"]) * pos["qty"]
                 dlog.sell_decision(
@@ -138,12 +138,12 @@ class AgentI6:
                 continue
 
             # --- Hard exit: target ---
+            # Simulate a limit-order fill: we sell at the target price (not the
+            # potentially-higher current price) and apply symmetric exit slippage.
             if current_price >= pos["target"]:
-                _SLIPPAGE_PCT = 0.0015
-                fill_price = round(pos["target"] * (1 - _SLIPPAGE_PCT), 2)
+                fill_price = round(pos["target"] * (1 - SLIPPAGE_PCT), 2)
                 portfolio.sell(sym, fill_price, pos["qty"], "TARGET_HIT")
                 actions.append(f"TARGET_HIT:{sym}@{fill_price:.2f}")
-                from utils.brokerage import calculate_brokerage
                 charges = calculate_brokerage(pos["entry_price"], fill_price, pos["qty"])
                 gross_pnl = (fill_price - pos["entry_price"]) * pos["qty"]
                 dlog.sell_decision(
@@ -191,8 +191,7 @@ class AgentI6:
                     if not pos["partial_exited"] and current_price >= partial_exit_threshold:
                         exit_qty = pos["qty"] // 2
                         if exit_qty > 0:
-                            _SLIPPAGE_PCT = 0.0015
-                            fill_price = round(current_price * (1 - _SLIPPAGE_PCT), 2)
+                            fill_price = round(current_price * (1 - SLIPPAGE_PCT), 2)
                             portfolio.partial_exit(
                                 sym, fill_price, exit_qty, "PARTIAL_EXIT"
                             )

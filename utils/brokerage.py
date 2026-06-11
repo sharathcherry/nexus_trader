@@ -1,6 +1,25 @@
 """
 utils/brokerage.py — Consolidated Zerodha intraday brokerage math.
+
+Constants
+---------
+SLIPPAGE_PCT : float
+    Simulated market-order fill slippage (0.15%) applied symmetrically on
+    both entry (buy higher) and exit (sell lower).  Import this constant
+    instead of re-declaring it in each agent — there must be exactly one
+    source of truth.
+
+    Usage:
+        from utils.brokerage import SLIPPAGE_PCT
+        entry_fill = round(current_price * (1 + SLIPPAGE_PCT), 2)
+        sl_fill    = round(min(current_price, stop_loss) * (1 - SLIPPAGE_PCT), 2)
+        target_fill = round(target * (1 - SLIPPAGE_PCT), 2)  # cap at limit price
 """
+
+# Single source-of-truth for simulated NSE market-order slippage.
+# 0.15% = typical half-spread + impact cost for liquid Nifty-500 names.
+SLIPPAGE_PCT: float = 0.0015
+
 
 def calculate_brokerage(buy_price: float, sell_price: float, qty: int) -> dict:
     """
