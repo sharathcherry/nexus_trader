@@ -64,3 +64,6 @@ test_orchestrator_*.py
 *.db
 e2e_smoke_portfolio.db
 logs/index.html
+
+# Empty date marker files
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
