@@ -15,8 +15,10 @@ progress:
 # STATE: nexus_trader
 
 **Project:** nexus_trader — NSE India Intraday Paper Trading System
-**Last updated:** 2026-06-07
-**Updated by:** orchestrator (all phases complete)
+**Last updated:** 2026-06-11
+**Updated by:** orchestrator (quick task 260611-96a — critical bug fixes C1-C7)
+
+Last activity: 2026-06-11 - Completed quick task 260611-96a: Fix critical bugs C1-C7 from BUGS.md
 
 ---
 
@@ -136,6 +138,29 @@ Progress: [███████████████████████
 ### Blockers
 
 None.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260611-96a | Fix critical bugs C1-C7 from BUGS.md (_safe_fetch signature, token refresh chain, cache TTL, circuit ordering, daily reset, restart deadlock, shutdown liquidation) | 2026-06-11 | bb73653 | [260611-96a-fix-critical-bugs-from-bugs-md-c1-safe-f](./quick/260611-96a-fix-critical-bugs-from-bugs-md-c1-safe-f/) |
+
+### Bug Tracker (BUGS.md)
+
+| ID | Severity | Status | Commit |
+|----|----------|--------|--------|
+| C1 _safe_fetch signature | Critical | **FIXED** | 08c1c91 |
+| C2 Upstox token refresh chain | Critical | **FIXED** (code) — VM still needs `pip install undetected-chromedriver pyotp selenium` in venv | 08c1c91 |
+| C3 Cache TTL vs polling | Critical | **FIXED** | 08c1c91 |
+| C4 Circuit ordering | Critical | **FIXED** | ae4c83c |
+| C5 Daily state reset | Critical | **FIXED** | ae4c83c |
+| C6 Restart deadlock | Critical | **FIXED** | ae4c83c |
+| C7 Shutdown liquidation | Critical | **FIXED** | ae4c83c |
+| C8 Gap timing (yesterday's move) | Critical | OPEN — needs design decision (pre-open data source vs 09:15 rescan) | — |
+| H1-H9 | High | OPEN | — |
+| M1-M9 | Medium | OPEN | — |
+| L1-L6 | Low | OPEN | — |
+| S1-S3 | Security (Azure NSG/dashboard) | OPEN — infra change, not code | — |
 
 ---
 
