@@ -54,6 +54,7 @@ upstox_*.png
 # Internal planning / bug-tracking (not for public repo)
 .planning/
 BUGS.md
+REMAINING_BUGS.md
 
 # Tests & test config (excluded from published repo)
 tests/

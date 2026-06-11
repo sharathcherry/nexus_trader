@@ -66,6 +66,22 @@ class MarketDataFetcher:
             'Authorization': f'Bearer {self.upstox_token}'
         } if self.upstox_token else {}
 
+    @classmethod
+    def _prune_cache(cls):
+        """Prune expired and old entries from the class-level cache to prevent memory leaks."""
+        if len(cls._fetch_cache) < 200:
+            return
+        current_time = time.time()
+        to_delete = [k for k, (ts, _) in cls._fetch_cache.items() if current_time - ts > cls._cache_ttl]
+        for k in to_delete:
+            del cls._fetch_cache[k]
+        
+        if len(cls._fetch_cache) > 300:
+            # Keep newest 200 entries
+            sorted_keys = sorted(cls._fetch_cache.keys(), key=lambda k: cls._fetch_cache[k][0], reverse=True)
+            for k in sorted_keys[200:]:
+                del cls._fetch_cache[k]
+
     def _safe_fetch_yf(self, symbol: str, ttl: float | None = None, **kwargs) -> pd.DataFrame:
         """Internal helper for yfinance.
 
@@ -88,6 +104,7 @@ class MarketDataFetcher:
             if df is None or df.empty:
                 logger.warning("_safe_fetch_yf(%s): empty response", symbol)
                 return pd.DataFrame()
+            self._prune_cache()
             self._fetch_cache[cache_key] = (current_time, df)
             return df.copy()
         except Exception as exc:
@@ -184,6 +201,7 @@ class MarketDataFetcher:
                     df.index = df.index.tz_convert(IST)
 
         if df is not None and not df.empty:
+            self._prune_cache()
             self._fetch_cache[cache_key] = (current_time, df)
             return df.copy()
             
@@ -387,17 +405,23 @@ class MarketDataFetcher:
             logger.error("get_atr(%s): %s", symbol, exc)
             return None
 
-    def get_global_indices(self) -> dict[str, float]:
+    def get_global_indices(self) -> dict[str, dict[str, float]]:
         """
-        Fetch latest close for all global indices.
+        Fetch latest close and change percentage for all global indices.
         Returns partial dict if some fail. Returns {} only if all fail.
         """
-        result: dict[str, float] = {}
+        result: dict[str, dict[str, float]] = {}
         for name, symbol in _GLOBAL_INDICES.items():
             try:
-                df = self._safe_fetch_yf(symbol, period="2d", interval="1d", prepost=False, auto_adjust=True)
-                if not df.empty:
-                    result[name] = float(df["Close"].iloc[-1])
+                df = self._safe_fetch_yf(symbol, period="5d", interval="1d", prepost=False, auto_adjust=True)
+                if not df.empty and len(df) >= 2:
+                    current_close = float(df["Close"].iloc[-1])
+                    prev_close = float(df["Close"].iloc[-2])
+                    change_pct = (current_close - prev_close) / prev_close * 100
+                    result[name] = {
+                        "close": current_close,
+                        "change_pct": change_pct
+                    }
             except Exception as exc:
                 logger.warning("get_global_indices: %s (%s) failed -- %s", name, symbol, exc)
         return result

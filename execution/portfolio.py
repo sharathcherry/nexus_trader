@@ -393,6 +393,10 @@ class PaperPortfolio:
             logger.warning("SELL REJECTED %s — Symbol not in open positions", symbol)
             return False
 
+        if qty > position["qty"]:
+            logger.warning("SELL REJECTED %s — Qty %d > Position qty %d", symbol, qty, position["qty"])
+            return False
+
         charges = self._calculate_brokerage(position["entry_price"], exit_price, qty)
         gross_pnl = (exit_price - position["entry_price"]) * qty
         net_pnl = gross_pnl - charges["total_charges"]

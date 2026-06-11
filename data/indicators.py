@@ -108,7 +108,8 @@ class Indicators:
             n_minutes = config.ORB_MINUTES
 
         n_candles = max(1, n_minutes // 5)
-        opening = df.head(n_candles)
+        df_session = df.between_time("09:15", "15:30")
+        opening = df_session.head(n_candles)
 
         if opening.empty:
             return (0.0, 0.0)

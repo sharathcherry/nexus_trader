@@ -31,7 +31,7 @@ def _conn():
     return c
 
 def _price_poller_loop():
-    """Background thread to fetch yfinance prices for open positions every 10 seconds."""
+    """Background thread to fetch yfinance prices for open positions every 60 seconds (M7 fix)."""
     while True:
         try:
             if DB_PATH.exists():
@@ -69,7 +69,7 @@ def _price_poller_loop():
                             _latest_prices.update(prices)
         except Exception:
             pass
-        time.sleep(10)
+        time.sleep(60)
 
 # Start the background poller thread
 poller_thread = threading.Thread(target=_price_poller_loop, daemon=True)

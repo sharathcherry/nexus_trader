@@ -87,7 +87,7 @@ def _call_gemini(indices_data: dict) -> MarketBias:
     """
     # Build human-readable index summary for prompt
     index_lines = "\n".join(
-        f"  {name}: {value:.2f}" for name, value in indices_data.items()
+        f"  {name}: {data.get('close', 0.0):.2f} ({data.get('change_pct', 0.0):+.2f}%)" for name, data in indices_data.items()
     )
 
     prompt = f"""You are a pre-market market analyst for NSE India intraday trading.
@@ -148,8 +148,8 @@ def _rule_based_fallback(indices_data: dict) -> MarketBias:
 
     bias = "NEUTRAL"
 
-    if "^GSPC" in indices_data:
-        sp500 = indices_data["^GSPC"]
+    if "SP500" in indices_data:
+        sp500 = indices_data["SP500"]
         if isinstance(sp500, dict):
             change_pct = sp500.get("change_pct", 0.0)
         else:

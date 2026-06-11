@@ -117,36 +117,46 @@ class AgentI6:
 
             # --- Hard exit: stop loss ---
             if current_price <= pos["stop_loss"]:
-                portfolio.sell(sym, current_price, pos["qty"], "SL_HIT")
-                actions.append(f"SL_HIT:{sym}@{current_price:.2f}")
+                _SLIPPAGE_PCT = 0.0015
+                fill_price = round(min(current_price, pos["stop_loss"]) * (1 - _SLIPPAGE_PCT), 2)
+                portfolio.sell(sym, fill_price, pos["qty"], "SL_HIT")
+                actions.append(f"SL_HIT:{sym}@{fill_price:.2f}")
+                from utils.brokerage import calculate_brokerage
+                charges = calculate_brokerage(pos["entry_price"], fill_price, pos["qty"])
+                gross_pnl = (fill_price - pos["entry_price"]) * pos["qty"]
                 dlog.sell_decision(
                     symbol=sym, exit_reason="SL_HIT",
-                    entry_price=pos["entry_price"], exit_price=current_price,
+                    entry_price=pos["entry_price"], exit_price=fill_price,
                     qty=pos["qty"],
-                    gross_pnl=(current_price - pos["entry_price"]) * pos["qty"],
-                    net_pnl=(current_price - pos["entry_price"]) * pos["qty"],  # approx
-                    brokerage=0.0,
+                    gross_pnl=gross_pnl,
+                    net_pnl=gross_pnl - charges["total_charges"],
+                    brokerage=charges["brokerage"],
                     entry_time=pos.get("entry_time", ""),
                     strategy=pos.get("strategy", ""),
                 )
-                notifier.send_sell(sym, current_price, pos["qty"], "SL_HIT")
+                notifier.send_sell(sym, fill_price, pos["qty"], "SL_HIT")
                 continue
 
             # --- Hard exit: target ---
             if current_price >= pos["target"]:
-                portfolio.sell(sym, current_price, pos["qty"], "TARGET_HIT")
-                actions.append(f"TARGET_HIT:{sym}@{current_price:.2f}")
+                _SLIPPAGE_PCT = 0.0015
+                fill_price = round(pos["target"] * (1 - _SLIPPAGE_PCT), 2)
+                portfolio.sell(sym, fill_price, pos["qty"], "TARGET_HIT")
+                actions.append(f"TARGET_HIT:{sym}@{fill_price:.2f}")
+                from utils.brokerage import calculate_brokerage
+                charges = calculate_brokerage(pos["entry_price"], fill_price, pos["qty"])
+                gross_pnl = (fill_price - pos["entry_price"]) * pos["qty"]
                 dlog.sell_decision(
                     symbol=sym, exit_reason="TARGET_HIT",
-                    entry_price=pos["entry_price"], exit_price=current_price,
+                    entry_price=pos["entry_price"], exit_price=fill_price,
                     qty=pos["qty"],
-                    gross_pnl=(current_price - pos["entry_price"]) * pos["qty"],
-                    net_pnl=(current_price - pos["entry_price"]) * pos["qty"],  # approx
-                    brokerage=0.0,
+                    gross_pnl=gross_pnl,
+                    net_pnl=gross_pnl - charges["total_charges"],
+                    brokerage=charges["brokerage"],
                     entry_time=pos.get("entry_time", ""),
                     strategy=pos.get("strategy", ""),
                 )
-                notifier.send_sell(sym, current_price, pos["qty"], "TARGET_HIT")
+                notifier.send_sell(sym, fill_price, pos["qty"], "TARGET_HIT")
                 continue
 
             # --- Circuit recovery: price moving again removes the flag ---
@@ -181,20 +191,22 @@ class AgentI6:
                     if not pos["partial_exited"] and current_price >= partial_exit_threshold:
                         exit_qty = pos["qty"] // 2
                         if exit_qty > 0:
+                            _SLIPPAGE_PCT = 0.0015
+                            fill_price = round(current_price * (1 - _SLIPPAGE_PCT), 2)
                             portfolio.partial_exit(
-                                sym, current_price, exit_qty, "PARTIAL_EXIT"
+                                sym, fill_price, exit_qty, "PARTIAL_EXIT"
                             )
                             actions.append(
-                                f"PARTIAL_EXIT:{sym}@{current_price:.2f} qty={exit_qty}"
+                                f"PARTIAL_EXIT:{sym}@{fill_price:.2f} qty={exit_qty}"
                             )
                             dlog.partial_exit(
-                                symbol=sym, exit_price=current_price,
+                                symbol=sym, exit_price=fill_price,
                                 exit_qty=exit_qty,
                                 remaining_qty=pos["qty"] - exit_qty,
-                                pnl=(current_price - pos["entry_price"]) * exit_qty,
+                                pnl=(fill_price - pos["entry_price"]) * exit_qty,
                                 reason="1:1 R:R lock-in reached",
                             )
-                            notifier.send_partial_exit(sym, current_price, exit_qty)
+                            notifier.send_partial_exit(sym, fill_price, exit_qty)
 
             # --- Trailing SL & Breakeven SL ---
             # Re-fetch pos to get updated partial_exited flag after potential partial exit

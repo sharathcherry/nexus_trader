@@ -125,13 +125,27 @@ class AgentI4:
             orb_high, orb_low = Indicators.orb(df)
 
             if orb_high and orb_high > 0:
+                old_trigger = entry.entry_trigger
+                new_target = round(orb_high + 2.0 * entry.atr, 2)
+                new_sl = round(orb_low, 2)
+                denom = orb_high - new_sl
+                if denom <= 0:
+                    continue
+                rr_ratio = (new_target - orb_high) / denom
+                from config import config
+                if rr_ratio < config.MIN_RR_RATIO:
+                    logger.debug("ORB override %s rejected: R:R %.2f < %.2f", sym, rr_ratio, config.MIN_RR_RATIO)
+                    entry.entry_trigger = float('inf')
+                    continue
+
                 logger.info(
-                    "ORB override %s: entry_trigger %.2f → %.2f",
-                    sym,
-                    entry.entry_trigger,
-                    orb_high,
+                    "ORB override %s: trigger %.2f → %.2f, SL → %.2f, Target → %.2f",
+                    sym, old_trigger, orb_high, new_sl, new_target,
                 )
                 entry.entry_trigger = orb_high
+                entry.stop_loss = new_sl
+                entry.target = new_target
+                entry.rr_ratio = round(rr_ratio, 2)
                 if portfolio is not None:
                     portfolio.update_watchlist_trigger(sym, orb_high)
 
@@ -235,9 +249,19 @@ class AgentI4:
             elif strategy == "ORB_BREAKOUT":
                 signal = current_price >= entry.entry_trigger
             elif strategy == "VWAP_RECLAIM":
-                signal = current_price >= entry.entry_trigger
+                df_session = df.between_time("09:15", "15:30")
+                if not df_session.empty:
+                    vwap_val = Indicators.vwap(df_session).iloc[-1]
+                    signal = current_price > vwap_val
+                else:
+                    signal = False
             elif strategy == "GAP_FILL":
-                signal = current_price <= entry.entry_trigger
+                df_session = df.between_time("09:15", "15:30")
+                if len(df_session) >= 3:
+                    low_15m = df_session["Low"].iloc[:3].min()
+                    signal = current_price > low_15m
+                else:
+                    signal = False
             else:
                 signal = False
 
@@ -246,8 +270,9 @@ class AgentI4:
 
             # Quantity sizing
             if order_manager is not None:
+                current_prices = {s: float(d["Close"].iloc[-1]) for s, d in candles_map.items() if d is not None and not d.empty}
                 qty = order_manager.calculate_quantity(
-                    current_price, entry.stop_loss
+                    current_price, entry.stop_loss, current_prices
                 )
             else:
                 qty = 1
@@ -262,6 +287,21 @@ class AgentI4:
             # Apply 0.15% slippage to simulate real NSE market-order fills
             _SLIPPAGE_PCT = 0.0015
             fill_price = round(current_price * (1 + _SLIPPAGE_PCT), 2)
+            
+            # Chase guard
+            if fill_price > entry.entry_trigger * 1.01:
+                logger.debug("BUY SKIPPED %s — chase guard hit (fill %.2f > trigger %.2f * 1.01)", sym, fill_price, entry.entry_trigger)
+                continue
+                
+            # Re-validate R:R with actual fill price
+            denom = fill_price - entry.stop_loss
+            if denom <= 0:
+                continue
+            fill_rr = (entry.target - fill_price) / denom
+            from config import config
+            if fill_rr < config.MIN_RR_RATIO:
+                logger.debug("BUY SKIPPED %s — R:R at fill %.2f < %.2f", sym, fill_rr, config.MIN_RR_RATIO)
+                continue
 
             success = portfolio.buy(
                 sym,
@@ -323,8 +363,8 @@ class AgentI4:
             self.circuit_set,
         )
 
-        self._check_entries(candles_map, portfolio, current_time, order_manager)
         self._maybe_apply_orb_override(candles_map, current_time, portfolio)
+        self._check_entries(candles_map, portfolio, current_time, order_manager)
 
     # ------------------------------------------------------------------
     # Main async loop
