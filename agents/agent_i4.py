@@ -4,7 +4,7 @@ agents/agent_i4.py — AgentI4: Signal engine with 60-second async polling loop.
 Responsibilities:
   - Fetch 5-min OHLCV candles for all watchlist symbols each cycle
   - Delegate position monitoring to AgentI6
-  - Evaluate entry signals (GAP_AND_GO, ORB_BREAKOUT, GAP_FILL, VWAP_RECLAIM)
+  - Evaluate entry signals (GAP_AND_GO, ORB_BREAKOUT, GAP_FILL, VWAP_RECLAIM, RELATIVE_STRENGTH)
   - Apply ORB level override once 09:30 IST is reached
   - Force squareoff all positions when loop exits at 15:15 IST
 
@@ -309,6 +309,18 @@ class AgentI4:
                 if len(df_session) >= 3:
                     low_15m = df_session["Low"].iloc[:3].min()
                     signal = current_price > low_15m
+                else:
+                    signal = False
+            elif strategy == "RELATIVE_STRENGTH":
+                # Dual confirmation: price must be above session VWAP AND
+                # current volume ratio must show elevated participation
+                # (>= 1.5x average).  This filters out low-liquidity gap drifts
+                # and ensures institutional follow-through.
+                df_session = df.between_time("09:15", "15:30")
+                if not df_session.empty:
+                    vwap_val = float(Indicators.vwap(df_session).iloc[-1])
+                    vol_ratio = Indicators.volume_ratio(df_session)
+                    signal = (current_price > vwap_val) and (vol_ratio >= 1.5)
                 else:
                     signal = False
             else:
