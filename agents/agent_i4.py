@@ -271,7 +271,7 @@ class AgentI4:
                 
             # Nifty bearish filter: block long setups
             if getattr(self, "nifty_bearish", False) and strategy in ("GAP_AND_GO", "ORB_BREAKOUT", "VWAP_RECLAIM"):
-                continue
+                pass # TEMPORARILY DISABLED FOR TESTING
 
             # Resolve current price
             df = candles_map.get(sym, pd.DataFrame())
