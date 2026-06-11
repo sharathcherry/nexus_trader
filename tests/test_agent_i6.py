@@ -6,6 +6,7 @@ portfolio.partial_exit() signature: partial_exit(symbol, exit_price, exit_qty, e
 portfolio.update_stop_loss():       update_stop_loss(symbol, new_stop_loss)
 """
 import datetime
+from collections import deque
 
 import pytz
 import pytest
@@ -75,8 +76,9 @@ class TestCircuitDetection:
 
         assert sym in circuit_set
 
-    def test_circuit_skip_on_subsequent_call(self):
-        """Symbol already in circuit_set -> portfolio.sell NOT called."""
+    def test_circuit_flagged_symbol_still_hard_exits(self):
+        """C4 fix: SL/target checks run BEFORE circuit logic — a flagged
+        symbol whose price crosses SL is still exited."""
         agent = AgentI6()
         sym = "RELIANCE.NS"
         circuit_set = {sym}   # pre-populated
@@ -84,14 +86,59 @@ class TestCircuitDetection:
         pos = _make_position(sym, 1480, 1465, 1510, "GAP_AND_GO", qty=5)
         portfolio = mock_portfolio_factory(positions=[pos])
 
-        candles_map = {sym: make_candles([1460.0])}
+        candles_map = {sym: make_candles([1460.0])}   # below SL 1465
         watchlist_map = {sym: make_entry(sym, "GAP_AND_GO", 1480, 1465, 1510)}
 
         agent.monitor_positions(
             portfolio, watchlist_map, candles_map, _now_ist(10, 0), circuit_set
         )
 
+        portfolio.sell.assert_called_once_with(sym, 1460.0, 5, "SL_HIT")
+
+    def test_circuit_skips_partial_and_trailing_only(self):
+        """Symbol still in circuit_set with price between SL and target:
+        no exit, no partial exit, no trailing SL update."""
+        agent = AgentI6()
+        sym = "RELIANCE.NS"
+        circuit_set = {sym}   # pre-populated; empty price history -> no recovery
+
+        pos = _make_position(sym, 1480, 1465, 1510, "GAP_AND_GO", qty=10)
+        portfolio = mock_portfolio_factory(positions=[pos])
+
+        # 1496 >= partial threshold 1495 — would partial-exit if not flagged
+        candles_map = {sym: make_candles([1496.0])}
+        watchlist_map = {sym: make_entry(sym, "GAP_AND_GO", 1480, 1465, 1510, atr=20.0)}
+
+        agent.monitor_positions(
+            portfolio, watchlist_map, candles_map, _now_ist(10, 0), circuit_set
+        )
+
         portfolio.sell.assert_not_called()
+        portfolio.partial_exit.assert_not_called()
+        portfolio.update_stop_loss.assert_not_called()
+        assert sym in circuit_set
+
+    def test_circuit_recovery_on_price_change(self):
+        """C4 fix: a flagged symbol whose price moves again is removed from
+        circuit_set and resumes normal management."""
+        agent = AgentI6()
+        sym = "RELIANCE.NS"
+        circuit_set = {sym}
+        # Simulate the frozen history that caused the flag
+        agent._price_history[sym] = deque([1490.0, 1490.0, 1490.0], maxlen=3)
+
+        pos = _make_position(sym, 1480, 1465, 1510, "GAP_AND_GO", qty=5)
+        portfolio = mock_portfolio_factory(positions=[pos])
+        portfolio._get_position.return_value = None   # skip trailing SL cleanly
+
+        candles_map = {sym: make_candles([1492.0])}   # price moved
+        watchlist_map = {sym: make_entry(sym, "GAP_AND_GO", 1480, 1465, 1510, atr=20.0)}
+
+        agent.monitor_positions(
+            portfolio, watchlist_map, candles_map, _now_ist(10, 0), circuit_set
+        )
+
+        assert sym not in circuit_set
 
 
 # ---------------------------------------------------------------------------
