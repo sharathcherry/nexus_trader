@@ -16,6 +16,14 @@ from flask import Flask, jsonify
 
 import dashboard
 
+# Timeline helper — optional, degrades gracefully
+try:
+    from utils.event_timeline import render_timeline_html as _render_timeline
+    _TIMELINE_OK = True
+except ImportError:
+    _TIMELINE_OK = False
+    def _render_timeline(*a, **kw): return ""
+
 app = Flask(__name__)
 IST = dashboard.IST
 DB_PATH = dashboard.DB_PATH
@@ -184,9 +192,15 @@ def api_live_html():
 
         # 5. Fetch logs
         log_lines = dashboard._load_log_lines(80)
-        
+
+        # 6. Activity timeline HTML
+        try:
+            tl_html = _render_timeline() if _TIMELINE_OK else ""
+        except Exception:
+            tl_html = ""
+
         capital = float(meta.get("capital", 100000.0))
-        
+
         return jsonify({
             "capital": f"{capital:,.0f}",
             "daily_pnl": f"{'+' if live_daily_pnl>=0 else ''}{live_daily_pnl:,.0f}",
@@ -202,6 +216,7 @@ def api_live_html():
             "trades_html": trade_rows_html,
             "ledger_html": ledger_rows_html,
             "log_lines": log_lines,
+            "timeline_html": tl_html,
             "gen_at": datetime.now(IST).strftime("%H:%M:%S")
         })
     except Exception as e:

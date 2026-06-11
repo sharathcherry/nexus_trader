@@ -20,6 +20,15 @@ from pathlib import Path
 
 import pytz
 
+# Timeline helper — imported lazily so dashboard still works if utils unavailable
+try:
+    from utils.event_timeline import get_timeline, render_timeline_html
+    _TIMELINE_AVAILABLE = True
+except ImportError:
+    _TIMELINE_AVAILABLE = False
+    def get_timeline(*a, **kw): return []
+    def render_timeline_html(*a, **kw): return '<div class="tl-empty">Timeline unavailable.</div>'
+
 DB_PATH  = Path("execution/portfolio.db")
 PERF_DIR = Path("logs/performance")
 LOG_PATH = Path("logs/nexus.log")
@@ -146,6 +155,7 @@ def generate_html(starting_capital: float = 100_000.0) -> str:
     today_pnl = _daily_pnl(trades)
     gen_at    = datetime.now(IST).strftime("%H:%M:%S")
     gen_full  = datetime.now(IST).strftime("%d %b %Y, %H:%M IST")
+    timeline_html = render_timeline_html()
 
     eq_labels = json.dumps([e["l"] for e in equity])
     eq_values = json.dumps([e["v"] for e in equity])
@@ -285,120 +295,136 @@ def generate_html(starting_capital: float = 100_000.0) -> str:
    Amber  — charges & warnings
    ═══════════════════════════════════════════ */
 :root {{
-  --bg:       #0a0a0a;
-  --surface:  #111111;
-  --surface2: #161616;
-  --border:   #1e1e1e;
-  --border2:  #2a2a2a;
-  --text:     #e4e4e4;
-  --muted:    #777;
-  --dim:      #555;
+  --bg:       #080810;
+  --surface:  #0e0e18;
+  --surface2: #131320;
+  --border:   #1c1c2e;
+  --border2:  #252538;
+  --text:     #e8e8f0;
+  --muted:    #7a7a9a;
+  --dim:      #4a4a6a;
   --purple:   #6366f1;
   --purple2:  #818cf8;
-  --purple-bg:rgba(99,102,241,0.08);
+  --purple3:  #a5b4fc;
+  --purple-bg:rgba(99,102,241,0.10);
   --green:    #22c55e;
+  --green2:   #4ade80;
   --green-bg: rgba(34,197,94,0.08);
   --red:      #ef4444;
+  --red2:     #f87171;
   --red-bg:   rgba(239,68,68,0.08);
-  --amber:    #d97706;
-  --amber-bg: rgba(217,119,6,0.08);
+  --amber:    #f59e0b;
+  --amber-bg: rgba(245,158,11,0.08);
+  --cyan:     #22d3ee;
   --mono:     'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
   --sans:     'Inter', system-ui, -apple-system, sans-serif;
-  --radius:   8px;
+  --radius:   10px;
+  --radius-sm: 6px;
+  --shadow:   0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(99,102,241,0.05);
 }}
 * {{ box-sizing:border-box; margin:0; padding:0 }}
-body {{ background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px; line-height:1.5 }}
+html {{ scroll-behavior:smooth }}
+body {{ background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased }}
 a {{ color:inherit; text-decoration:none }}
 ::selection {{ background:var(--purple); color:#fff }}
 
 /* ──── LAYOUT ──── */
-.page {{ max-width:1280px; margin:0 auto; padding:24px 24px 40px }}
+.page {{ max-width:1380px; margin:0 auto; padding:20px 24px 48px }}
 
 /* ──── 00 · HEADER ──── */
-header {{ display:flex; justify-content:space-between; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 24px; margin-bottom:16px }}
-.logo {{ font-family:var(--mono); font-size:1.2rem; font-weight:700; color:#fff }}
-.logo span {{ color:var(--purple) }}
-.sub {{ font-size:12px; color:var(--muted); margin-top:2px; font-family:var(--mono) }}
+header {{
+  display:flex; justify-content:space-between; align-items:center;
+  background:linear-gradient(135deg, #0e0e1e 0%, #111128 100%);
+  border:1px solid var(--border2); border-radius:var(--radius);
+  padding:18px 28px; margin-bottom:14px;
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(99,102,241,0.12);
+}}
+.logo {{ font-family:var(--mono); font-size:1.25rem; font-weight:700; color:#fff; letter-spacing:-.02em }}
+.logo span {{ color:var(--purple3) }}
+.logo-sub {{ font-size:11px; color:var(--dim); margin-top:3px; font-family:var(--mono); letter-spacing:.04em }}
+.header-right {{ display:flex; flex-direction:column; align-items:flex-end; gap:6px }}
 .live-badge {{ display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:12px; color:var(--muted) }}
-.live-dot {{ width:8px; height:8px; border-radius:50%; background:var(--green); animation:pulse 2s infinite }}
-@keyframes pulse {{ 0%,100%{{ opacity:1 }} 50%{{ opacity:.3 }} }}
+.live-dot {{ width:7px; height:7px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; box-shadow:0 0 6px var(--green) }}
+.date-badge {{ font-family:var(--mono); font-size:11px; color:var(--dim) }}
+@keyframes pulse {{ 0%,100%{{ opacity:1; transform:scale(1) }} 50%{{ opacity:.4; transform:scale(.85) }} }}
 
 /* ──── HALT BANNER ──── */
-.halt-banner {{ background:rgba(127,29,29,0.5); border:1px solid #7f1d1d; color:#fca5a5; padding:10px 16px; border-radius:var(--radius); margin-bottom:16px; font-weight:600; font-size:13px; font-family:var(--mono) }}
+.halt-banner {{ background:rgba(127,29,29,0.45); border:1px solid rgba(239,68,68,0.4); color:#fca5a5; padding:11px 18px; border-radius:var(--radius); margin-bottom:14px; font-weight:600; font-size:13px; font-family:var(--mono); display:flex; align-items:center; gap:10px }}
 
 /* ──── TAB NAV ──── */
-.tabs {{ display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap }}
-.tab {{ font-family:var(--mono); font-size:13px; padding:8px 18px; border:1px solid var(--border2); border-radius:6px; cursor:pointer; transition:all .15s; color:var(--muted); background:transparent; user-select:none }}
-.tab:hover {{ border-color:var(--text); color:var(--text) }}
-.tab.active {{ background:var(--purple); color:#fff; border-color:var(--purple); font-weight:600 }}
+.tabs {{ display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap }}
+.tab {{ font-family:var(--mono); font-size:12px; padding:7px 16px; border:1px solid var(--border2); border-radius:var(--radius-sm); cursor:pointer; transition:all .15s; color:var(--muted); background:transparent; user-select:none; letter-spacing:.02em }}
+.tab:hover {{ border-color:var(--purple2); color:var(--purple3) }}
+.tab.active {{ background:var(--purple); color:#fff; border-color:var(--purple); font-weight:600; box-shadow:0 0 16px rgba(99,102,241,0.25) }}
 .tab .star {{ color:var(--purple2); margin-right:4px }}
-.tab.active .star {{ color:#fff }}
+.tab.active .star {{ color:#c7d2fe }}
 
 /* ──── SECTION LABEL ──── */
-.section-label {{ font-family:var(--mono); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center }}
+.section-label {{ font-family:var(--mono); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; padding:0 2px }}
 .section-label .right {{ font-size:10px; color:var(--dim) }}
-.tab-badge {{ display:inline-block; font-family:var(--mono); font-size:10px; font-weight:700; padding:3px 10px; border-radius:4px; background:var(--purple); color:#fff; letter-spacing:.06em; cursor:pointer; text-decoration:none }}
+.tab-badge {{ display:inline-block; font-family:var(--mono); font-size:10px; font-weight:700; padding:3px 10px; border-radius:4px; background:var(--purple); color:#fff; letter-spacing:.06em; cursor:pointer; text-decoration:none; transition:background .15s }}
 .tab-badge:hover {{ background:var(--purple2) }}
 
 /* ──── PANELS ──── */
 .panel {{ display:none }}
 .panel.active {{ display:block }}
 
-/* ──── 01 · KPI STRIP — 8 connected tiles ──── */
-.kpi-strip {{ display:grid; grid-template-columns:repeat(8, 1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:20px }}
-.kpi {{ background:var(--surface); padding:14px 16px }}
-.kpi .label {{ font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); font-family:var(--mono); margin-bottom:4px; white-space:nowrap }}
-.kpi .value {{ font-size:1.15rem; font-weight:700; font-family:var(--mono); color:#fff; white-space:nowrap }}
-.kpi .value.pos {{ color:var(--green) }}
-.kpi .value.neg {{ color:var(--red) }}
+/* ──── 01 · KPI STRIP ──── */
+.kpi-strip {{ display:grid; grid-template-columns:repeat(8, 1fr); gap:1px; background:var(--border2); border:1px solid var(--border2); border-radius:var(--radius); overflow:hidden; margin-bottom:18px; box-shadow:var(--shadow) }}
+.kpi {{ background:var(--surface); padding:14px 16px; transition:background .15s }}
+.kpi:hover {{ background:var(--surface2) }}
+.kpi .label {{ font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-family:var(--mono); margin-bottom:5px; white-space:nowrap }}
+.kpi .value {{ font-size:1.1rem; font-weight:700; font-family:var(--mono); color:#fff; white-space:nowrap; letter-spacing:-.02em }}
+.kpi .value.pos {{ color:var(--green2) }}
+.kpi .value.neg {{ color:var(--red2) }}
 
 /* ──── CARDS ──── */
-.card {{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:20px }}
-.card-head {{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); font-family:var(--mono); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center }}
-.two-col {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px }}
+.card {{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:18px; box-shadow:var(--shadow) }}
+.card-head {{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.10em; color:var(--dim); font-family:var(--mono); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center }}
+.two-col {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px }}
 @media(max-width:768px){{ .two-col{{ grid-template-columns:1fr }} }}
 .chart-wrap {{ height:200px; position:relative }}
 
 /* ──── FILTER TABS ──── */
-.filters {{ display:flex; gap:6px; margin-bottom:14px }}
-.fbtn {{ font-family:var(--mono); font-size:11px; padding:4px 12px; border:1px solid var(--border2); border-radius:4px; cursor:pointer; color:var(--muted); background:transparent; transition:all .12s }}
-.fbtn:hover {{ border-color:var(--text); color:var(--text) }}
+.filters {{ display:flex; gap:5px; margin-bottom:14px }}
+.fbtn {{ font-family:var(--mono); font-size:11px; padding:4px 11px; border:1px solid var(--border2); border-radius:4px; cursor:pointer; color:var(--muted); background:transparent; transition:all .12s }}
+.fbtn:hover {{ border-color:var(--purple2); color:var(--purple3) }}
 .fbtn.active {{ background:var(--text); color:var(--bg); border-color:var(--text) }}
 
 /* ──── TABLES ──── */
-.tbl-wrap {{ overflow-x:auto }}
-.tbl-wrap::-webkit-scrollbar {{ height:6px }}
+.tbl-wrap {{ overflow-x:auto; border-radius:var(--radius-sm) }}
+.tbl-wrap::-webkit-scrollbar {{ height:5px }}
 .tbl-wrap::-webkit-scrollbar-track {{ background:var(--surface2) }}
 .tbl-wrap::-webkit-scrollbar-thumb {{ background:var(--border2); border-radius:3px }}
 table {{ width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px }}
-th {{ font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap }}
-td {{ padding:8px 10px; border-bottom:1px solid #161616; vertical-align:middle; white-space:nowrap }}
+th {{ font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--dim); padding:8px 10px; text-align:left; border-bottom:1px solid var(--border2); white-space:nowrap }}
+td {{ padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap }}
 tr:last-child td {{ border-bottom:none }}
 tr:hover td {{ background:var(--surface2) }}
 .dim {{ color:var(--muted) }}
-.pos {{ color:var(--green) }}
-.neg {{ color:var(--red) }}
+.pos {{ color:var(--green2) }}
+.neg {{ color:var(--red2) }}
 .amber {{ color:var(--amber) }}
-.empty {{ color:var(--dim); text-align:center; padding:32px; font-style:italic }}
+.empty {{ color:var(--dim); text-align:center; padding:36px; font-style:italic; font-size:12px }}
 
 /* ──── GROUPED HEADERS (ledger) ──── */
 .group-header th {{ text-align:center; font-size:10px; font-weight:600; letter-spacing:.1em; border-bottom:2px solid var(--border2); padding:6px 10px }}
-.group-header .g-trade {{ background:var(--purple-bg); color:var(--purple2) }}
-.group-header .g-money {{ background:var(--green-bg); color:var(--green) }}
+.group-header .g-trade {{ background:var(--purple-bg); color:var(--purple3) }}
+.group-header .g-money {{ background:var(--green-bg); color:var(--green2) }}
 .group-header .g-charges {{ background:var(--amber-bg); color:var(--amber) }}
-.group-header .g-result {{ background:rgba(255,255,255,0.03); color:var(--text) }}
+.group-header .g-result {{ background:rgba(255,255,255,0.02); color:var(--text) }}
 
 /* ──── 07 · LOG VIEWER ──── */
-.log-terminal {{ background:#0b0b0b; border:1px solid var(--border); border-radius:var(--radius); height:340px; overflow-y:auto; padding:16px 18px; font-family:var(--mono); font-size:12px; line-height:1.7 }}
-.log-terminal::-webkit-scrollbar {{ width:6px }}
-.log-terminal::-webkit-scrollbar-track {{ background:#0b0b0b }}
-.log-terminal::-webkit-scrollbar-thumb {{ background:#333; border-radius:3px }}
+.log-terminal {{ background:#060610; border:1px solid var(--border); border-radius:var(--radius); height:340px; overflow-y:auto; padding:16px 18px; font-family:var(--mono); font-size:12px; line-height:1.75 }}
+.log-terminal::-webkit-scrollbar {{ width:5px }}
+.log-terminal::-webkit-scrollbar-track {{ background:#060610 }}
+.log-terminal::-webkit-scrollbar-thumb {{ background:#2a2a3e; border-radius:3px }}
 .log-line {{ white-space:pre-wrap; word-wrap:break-word }}
 .log-line .ts {{ color:var(--dim) }}
-.log-line.buy {{ color:var(--green) }}
+.log-line.buy {{ color:var(--green2) }}
 .log-line.sell {{ color:#60a5fa }}
 .log-line.warn {{ color:#fbbf24 }}
-.log-line.err {{ color:var(--red) }}
+.log-line.err {{ color:var(--red2) }}
 .log-line.info {{ color:var(--muted) }}
 .log-auto {{ font-family:var(--mono); font-size:11px; color:var(--dim); display:flex; align-items:center; gap:6px }}
 
@@ -407,21 +433,100 @@ tr:hover td {{ background:var(--surface2) }}
 @keyframes flash-neg {{ 0%{{ background:var(--red-bg) }} 100%{{ background:transparent }} }}
 
 /* ──── REVIEW ──── */
-.review-summary {{ color:var(--muted); font-size:13px; margin-bottom:12px; line-height:1.6 }}
-.recs {{ padding-left:18px; color:var(--muted); font-size:13px; line-height:1.8 }}
+.review-summary {{ color:var(--muted); font-size:13px; margin-bottom:12px; line-height:1.7 }}
+.recs {{ padding-left:18px; color:var(--muted); font-size:13px; line-height:1.85 }}
 
 /* ──── 08 · FOOTER (dashed border) ──── */
-footer {{ text-align:center; font-size:11px; color:var(--dim); font-family:var(--mono); margin-top:28px; padding:14px 20px; border:2px dashed var(--border2); border-radius:var(--radius) }}
+footer {{ text-align:center; font-size:11px; color:var(--dim); font-family:var(--mono); margin-top:32px; padding:14px 20px; border:1px dashed var(--border2); border-radius:var(--radius) }}
+
+/* ════════════════════════════════════════════
+   ACTIVITY TIMELINE
+   ════════════════════════════════════════════ */
+.timeline-wrap {{
+  max-height: 480px;
+  overflow-y: auto;
+  border-radius: var(--radius-sm);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}}
+.timeline-wrap::-webkit-scrollbar {{ width:5px }}
+.timeline-wrap::-webkit-scrollbar-thumb {{ background:var(--border2); border-radius:3px }}
+
+.tl-row {{
+  display: grid;
+  grid-template-columns: 80px 28px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: background .12s;
+  border-radius: 4px;
+}}
+.tl-row:last-child {{ border-bottom:none }}
+.tl-row:hover {{ background:var(--surface2) }}
+
+.tl-time {{
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+  letter-spacing: .02em;
+}}
+.tl-icon {{
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.4;
+  user-select: none;
+}}
+.tl-text {{
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-word;
+  line-height: 1.5;
+}}
+
+/* Category-specific row styles */
+.cat-lifecycle .tl-time {{ color:var(--purple3) }}
+.cat-lifecycle .tl-text {{ color:var(--text) }}
+
+.cat-scan .tl-time {{ color:var(--cyan) }}
+.cat-scan .tl-text {{ color:#94e2ff }}
+
+.cat-trade .tl-time {{ color:var(--green2) }}
+.cat-trade .tl-text {{ color:#d4ffd9; font-weight:500 }}
+
+.cat-risk .tl-time {{ color:var(--amber) }}
+.cat-risk .tl-text {{ color:#fde68a }}
+
+.cat-review .tl-time {{ color:var(--purple3) }}
+.cat-review .tl-text {{ color:var(--purple3); font-weight:500 }}
+
+.cat-info .tl-text {{ color:var(--muted) }}
+
+/* Row accents for BUY/SELL */
+.cat-trade:has(.tl-text:first-letter) {{}}
+.tl-row.cat-trade {{ border-left:2px solid transparent; padding-left:6px }}
+
+.tl-empty {{
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+  padding: 28px 16px;
+  font-style: italic;
+}}
 
 /* ──── RESPONSIVE ──── */
-@media(max-width:1024px) {{
+@media(max-width:1100px) {{
   .kpi-strip {{ grid-template-columns:repeat(4, 1fr) }}
 }}
-@media(max-width:600px) {{
+@media(max-width:640px) {{
   .page {{ padding:12px 12px 32px }}
   .kpi-strip {{ grid-template-columns:repeat(2, 1fr) }}
   .tabs {{ gap:4px }}
   .tab {{ font-size:11px; padding:6px 10px }}
+  .tl-row {{ grid-template-columns:68px 24px 1fr }}
 }}
 </style>
 </head>
@@ -432,11 +537,14 @@ footer {{ text-align:center; font-size:11px; color:var(--dim); font-family:var(-
 <header>
   <div>
     <div class="logo">nexus<span>_</span>trader</div>
-    <div class="sub">NSE paper trading · Rs1,00,000 capital · Nifty 100 universe</div>
+    <div class="logo-sub">NSE paper trading · ₹1,00,000 capital · Nifty 100 universe</div>
   </div>
-  <div class="live-badge">
-    <span class="live-dot"></span>
-    LIVE · UPDATED <span id="liveClock">{gen_at}</span>
+  <div class="header-right">
+    <div class="live-badge">
+      <span class="live-dot"></span>
+      LIVE &nbsp;·&nbsp; <span id="liveClock">{gen_at}</span> IST
+    </div>
+    <div class="date-badge">{gen_full}</div>
   </div>
 </header>
 
@@ -455,16 +563,27 @@ footer {{ text-align:center; font-size:11px; color:var(--dim); font-family:var(-
 <div class="panel active" id="panel-main">
 
   <!-- 01 · KPI STRIP — 8 connected tiles -->
-  <div class="section-label">KPI STRIP — 8 CONNECTED TILES</div>
+  <div class="section-label">PORTFOLIO SUMMARY</div>
   <div class="kpi-strip">
-    <div class="kpi"><div class="label">Capital</div><div class="value">{capital:,.0f}</div></div>
-    <div class="kpi"><div class="label">Daily P&amp;L</div><div class="value {dpnl_cls}">{"+" if today_pnl>=0 else ""}{today_pnl:,.0f}</div></div>
-    <div class="kpi"><div class="label">Trades</div><div class="value">{st['total']}</div></div>
-    <div class="kpi"><div class="label">Open</div><div class="value">{len(positions)}</div></div>
-    <div class="kpi"><div class="label">All-time</div><div class="value {alltime_cls}">{"+" if st['net_pnl']>=0 else ""}{st['net_pnl']:,.0f}</div></div>
-    <div class="kpi"><div class="label">Win %</div><div class="value">{st['win_rate']:.0f}</div></div>
-    <div class="kpi"><div class="label">P. Factor</div><div class="value">{st['profit_factor']:.1f}</div></div>
-    <div class="kpi"><div class="label">Avg R:R</div><div class="value">{st['avg_rr']:.1f}</div></div>
+    <div class="kpi"><div class="label">Capital ₹</div><div class="value" id="kpi-capital">{capital:,.0f}</div></div>
+    <div class="kpi"><div class="label">Day P&amp;L ₹</div><div class="value {dpnl_cls}" id="kpi-dpnl">{"+" if today_pnl>=0 else ""}{today_pnl:,.0f}</div></div>
+    <div class="kpi"><div class="label">Trades</div><div class="value" id="kpi-trades">{st['total']}</div></div>
+    <div class="kpi"><div class="label">Open Pos</div><div class="value" id="kpi-open">{len(positions)}</div></div>
+    <div class="kpi"><div class="label">All-time ₹</div><div class="value {alltime_cls}" id="kpi-alltime">{"+" if st['net_pnl']>=0 else ""}{st['net_pnl']:,.0f}</div></div>
+    <div class="kpi"><div class="label">Win Rate</div><div class="value" id="kpi-winrate">{st['win_rate']:.0f}%</div></div>
+    <div class="kpi"><div class="label">Prof. Factor</div><div class="value" id="kpi-pf">{st['profit_factor']:.1f}x</div></div>
+    <div class="kpi"><div class="label">Avg R:R</div><div class="value" id="kpi-rr">{st['avg_rr']:.1f}</div></div>
+  </div>
+
+  <!-- 01b · ACTIVITY TIMELINE -->
+  <div class="section-label">
+    ACTIVITY TIMELINE — TODAY
+    <span class="right" id="tlCount"></span>
+  </div>
+  <div class="card" style="padding:14px 16px; margin-bottom:18px">
+    <div class="timeline-wrap" id="timelineWrap">
+      {timeline_html}
+    </div>
   </div>
 
   <!-- 02 · LIVE POSITIONS — TABLE -->
@@ -738,52 +857,48 @@ setInterval(() => {{
   }}
 }}, 1000);
 
-/* ──── Dynamic update loop (every 3 seconds) ──── */
+/* ──── Dynamic update loop (every 5 seconds) ──── */
 async function updateLiveDashboard() {{
   try {{
     const response = await fetch('/api/live-html');
     if (!response.ok) return;
     const data = await response.json();
-    
-    // Update KPI strip values
-    const kpis = document.querySelectorAll('.kpi-strip .kpi');
-    if (kpis.length === 8 && data.capital) {{
-      kpis[0].querySelector('.value').textContent = data.capital;
-      
-      const pnlVal = kpis[1].querySelector('.value');
-      pnlVal.textContent = data.daily_pnl;
-      pnlVal.className = 'value ' + data.dpnl_cls;
-      
-      kpis[2].querySelector('.value').textContent = data.trades;
-      kpis[3].querySelector('.value').textContent = data.open;
-      
-      const allTimeVal = kpis[4].querySelector('.value');
-      allTimeVal.textContent = data.all_time;
-      allTimeVal.className = 'value ' + data.alltime_cls;
-      
-      kpis[5].querySelector('.value').textContent = data.win_rate;
-      kpis[6].querySelector('.value').textContent = data.profit_factor;
-      kpis[7].querySelector('.value').textContent = data.avg_rr;
+
+    // ── KPI strip (by stable IDs) ──
+    function setKpi(id, val, cls) {{
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = val;
+      if (cls) el.className = 'value ' + cls;
     }}
-    
-    // Update Live Positions Table body
+    if (data.capital) {{
+      setKpi('kpi-capital',  data.capital,        '');
+      setKpi('kpi-dpnl',     data.daily_pnl,       data.dpnl_cls);
+      setKpi('kpi-trades',   data.trades,          '');
+      setKpi('kpi-open',     data.open,            '');
+      setKpi('kpi-alltime',  data.all_time,        data.alltime_cls);
+      setKpi('kpi-winrate',  data.win_rate + '%',  '');
+      setKpi('kpi-pf',       data.profit_factor + 'x', '');
+      setKpi('kpi-rr',       data.avg_rr,          '');
+    }}
+
+    // ── Live Positions Table body ──
     const posTbody = document.querySelector('#panel-main table tbody');
-    if (posTbody && data.positions_html) {{
+    if (posTbody && data.positions_html !== undefined) {{
       posTbody.innerHTML = data.positions_html;
     }}
-    
-    // Update Trade History Table body (second table in panel-main)
+
+    // ── Trade History Table body (second table in panel-main) ──
     const tables = document.querySelectorAll('#panel-main table');
-    if (tables.length >= 2 && data.trades_html) {{
+    if (tables.length >= 2 && data.trades_html !== undefined) {{
       tables[1].querySelector('tbody').innerHTML = data.trades_html;
     }}
-    
-    // Update Trade Ledger Table body
+
+    // ── Trade Ledger Table body ──
     const ledgerTbody = document.querySelector('#ledger-table tbody');
-    if (ledgerTbody && data.ledger_html) {{
+    if (ledgerTbody && data.ledger_html !== undefined) {{
       ledgerTbody.innerHTML = data.ledger_html;
-      // Re-trigger filtering on the new rows if a filter is active
-      const activeFilterBtn = document.querySelector('.filters .fbtn.active');
+      const activeFilterBtn = document.querySelector('#panel-ledger .filters .fbtn.active');
       if (activeFilterBtn) {{
         const onclickText = activeFilterBtn.getAttribute('onclick') || '';
         const modeMatch = onclickText.match(/filterTrades\\('([^']+)'/);
@@ -798,33 +913,58 @@ async function updateLiveDashboard() {{
         }}
       }}
     }}
-    
-    // Update logs
+
+    // ── Activity timeline ──
+    if (data.timeline_html !== undefined) {{
+      const tw = document.getElementById('timelineWrap');
+      if (tw) {{
+        const wasAtBottom = tw.scrollHeight - tw.scrollTop <= tw.clientHeight + 40;
+        tw.innerHTML = data.timeline_html;
+        if (wasAtBottom) tw.scrollTop = tw.scrollHeight;
+        // update count label
+        const rows = tw.querySelectorAll('.tl-row');
+        const cnt = document.getElementById('tlCount');
+        if (cnt) cnt.textContent = rows.length ? rows.length + ' events' : '';
+      }}
+    }}
+
+    // ── Logs ──
     if (data.log_lines && typeof RAW_LINES !== 'undefined') {{
       RAW_LINES.length = 0;
       RAW_LINES.push(...data.log_lines);
       renderLog('logPreview');
       renderLog('logTerminal');
     }}
-    
-    // Sync live clock base time
+
+    // ── Sync live clock ──
     if (data.gen_at) {{
       const parts = data.gen_at.split(':');
       h = parseInt(parts[0], 10);
       m = parseInt(parts[1], 10);
       s = parseInt(parts[2], 10);
       const liveClockEl = document.getElementById('liveClock');
-      if (liveClockEl) {{
-        liveClockEl.textContent = data.gen_at;
-      }}
+      if (liveClockEl) liveClockEl.textContent = data.gen_at;
     }}
-    
+
   }} catch (e) {{
     // Fail silently when served statically via file://
   }}
 }}
+
+// Count timeline rows on first load
+(function() {{
+  const tw = document.getElementById('timelineWrap');
+  const cnt = document.getElementById('tlCount');
+  if (tw && cnt) {{
+    const rows = tw.querySelectorAll('.tl-row');
+    if (rows.length) cnt.textContent = rows.length + ' events';
+    // Scroll to bottom on first load
+    tw.scrollTop = tw.scrollHeight;
+  }}
+}})();
+
 // Start polling
-setInterval(updateLiveDashboard, 3000);
+setInterval(updateLiveDashboard, 5000);
 </script>
 </body>
 </html>"""
