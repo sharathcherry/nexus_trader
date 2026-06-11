@@ -52,6 +52,8 @@ class AgentI4:
         self.bought_symbols: set[str] = set()
         self._squaredoff: bool = False
         self._orb_set: bool = False
+        self.nifty_bearish: bool = False
+        self._last_nifty_check: float = 0.0
         self.circuit_set: set[str] = set()
         self.monitor = AgentI6()
 
@@ -150,6 +152,39 @@ class AgentI4:
                     portfolio.update_watchlist_trigger(sym, orb_high)
 
     # ------------------------------------------------------------------
+    # Nifty bearish filter
+    # ------------------------------------------------------------------
+
+    def _evaluate_nifty_filter(self) -> None:
+        import time
+        current_time = time.time()
+        # Check every 5 minutes (300 seconds)
+        if current_time - self._last_nifty_check < 300:
+            return
+        
+        self._last_nifty_check = current_time
+        try:
+            from data.market_data import MarketDataFetcher
+            fetcher = MarketDataFetcher()
+            nifty_df = fetcher._safe_fetch("^NSEI", is_intraday=True)
+            prev_close = fetcher.get_previous_close("^NSEI")
+            
+            if not nifty_df.empty and prev_close:
+                last_close = float(nifty_df["Close"].iloc[-1])
+                nifty_chg = (last_close - prev_close) / prev_close * 100
+                was_bearish = self.nifty_bearish
+                self.nifty_bearish = nifty_chg < -0.5
+                
+                if self.nifty_bearish and not was_bearish:
+                    logger.warning("NIFTY BEARISH FILTER ACTIVE: %.2f%% -- blocking long setups", nifty_chg)
+                    from utils.telegram import notifier
+                    notifier.send_error("Nifty Filter", f"Nifty down {nifty_chg:.2f}% -- blocking longs.")
+                elif not self.nifty_bearish and was_bearish:
+                    logger.info("NIFTY BEARISH FILTER CLEARED: %.2f%% -- unblocking longs", nifty_chg)
+        except Exception as e:
+            logger.debug("Nifty filter check failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Force squareoff
     # ------------------------------------------------------------------
 
@@ -231,6 +266,10 @@ class AgentI4:
 
             if not can_buy:
                 # We skip signal check completely if outside window
+                continue
+                
+            # Nifty bearish filter: block long setups
+            if getattr(self, "nifty_bearish", False) and strategy in ("GAP_AND_GO", "ORB_BREAKOUT", "VWAP_RECLAIM"):
                 continue
 
             # Resolve current price
@@ -363,6 +402,7 @@ class AgentI4:
             self.circuit_set,
         )
 
+        self._evaluate_nifty_filter()
         self._maybe_apply_orb_override(candles_map, current_time, portfolio)
         self._check_entries(candles_map, portfolio, current_time, order_manager)
 
@@ -407,31 +447,6 @@ class AgentI4:
                 logger.info("Restored bought symbols: %s", self.bought_symbols)
         except Exception as e:
             logger.error("Failed to restore bought symbols state: %s", e)
-
-        # Nifty 50 index filter: block all long strategies if Nifty is down >0.5%
-        try:
-            from data.market_data import MarketDataFetcher
-            fetcher = MarketDataFetcher()
-            nifty_df = fetcher._safe_fetch("^NSEI", is_intraday=False, period_days=2)
-            if nifty_df is not None and not nifty_df.empty and len(nifty_df) >= 2:
-                prev_close = float(nifty_df["Close"].iloc[-2])
-                last_close = float(nifty_df["Close"].iloc[-1])
-                nifty_chg = (last_close - prev_close) / prev_close * 100
-                if nifty_chg < -0.5:
-                    blocked = [s for s, e in self.watchlist_map.items()
-                               if e.strategy in ("GAP_AND_GO", "ORB_BREAKOUT", "VWAP_RECLAIM")]
-                    for sym in blocked:
-                        del self.watchlist_map[sym]
-                    logger.warning(
-                        "NIFTY BEARISH FILTER: %.2f%% -- blocked %d long setups",
-                        nifty_chg, len(blocked),
-                    )
-                    notifier.send_error(
-                        "Nifty Bearish Filter",
-                        f"Nifty down {nifty_chg:.2f}% -- {len(blocked)} long setups blocked. Only GAP_FILL active.",
-                    )
-        except Exception as _nifty_exc:
-            logger.warning("Nifty filter check failed (non-fatal): %s", _nifty_exc)
 
         first_cycle = True
         while True:
