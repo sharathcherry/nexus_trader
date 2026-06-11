@@ -30,17 +30,17 @@ class Config:
         self.MAX_POSITIONS_PER_SECTOR = 2  # sector concentration guard
 
         # Entry/exit R:R
-        self.MIN_RISK_REWARD = 0.5
+        self.MIN_RISK_REWARD = 1.5
 
         # Gap filter
-        self.GAP_MIN_PCT      = 0.5
+        self.GAP_MIN_PCT      = 1.5
         self.GAP_MAX_PCT      = 8.0
         self.MIN_PREV_VOLUME  = 500_000
         self.MIN_PRICE        = 50
         self.MAX_PRICE        = 5_000
 
         # Volume ratio filter (applied in AgentI1)
-        self.MIN_VOLUME_RATIO = 0.2        # current vol >= 1.2x 20-period avg
+        self.MIN_VOLUME_RATIO = 1.2        # current vol >= 1.2x 20-period avg
 
         # Entry window (IST)
         self.ENTRY_CUTOFF_HOUR   = 14      # no new entries after 14:00
