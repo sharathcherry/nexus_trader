@@ -80,12 +80,17 @@ def _load_latest_review() -> dict | None:
         except Exception: continue
     return None
 
-def _load_log_lines(n: int = 80) -> list[str]:
+def _load_log_lines(n: int = 500) -> list[str]:
     if not LOG_PATH.exists(): return []
     try:
         text = LOG_PATH.read_text(encoding="utf-8", errors="replace")
         lines = text.strip().splitlines()
-        return lines[-n:]
+        # Filter out pure DEBUG Fetching noise so important lines are always visible
+        filtered = [
+            l for l in lines
+            if not ("[DEBUG" in l and "Fetching" in l and "via Upstox API" in l)
+        ]
+        return filtered[-n:]
     except Exception:
         return []
 
@@ -749,7 +754,8 @@ function classifyLine(line) {{
   if (up.includes('ERROR') || up.includes('TRACEBACK') || up.includes('EXCEPTION')) return 'err';
   if (up.includes('BUY ') || up.includes('BOUGHT')) return 'buy';
   if (up.includes('SELL ') || up.includes('SOLD') || up.includes('SQUAREOFF')) return 'sell';
-  if (up.includes('WARN') || up.includes('SLIPPAGE') || up.includes('TIMEOUT')) return 'warn';
+  if (up.includes('WARN') || up.includes('SLIPPAGE') || up.includes('TIMEOUT') || up.includes('CIRCUIT') || up.includes('POSSIBLE_CIRCUIT')) return 'warn';
+  if (up.includes('SKIPPED') || up.includes('SESSION') || up.includes('MARKET OPEN') || up.includes('WATCHLIST') || up.includes('SCHEDULER') || up.includes('RUN TIME') || up.includes('EXECUTION OF JOB')) return 'auto';
   return 'info';
 }}
 
@@ -759,7 +765,7 @@ function renderLog(targetId) {{
   let h = '';
   RAW_LINES.forEach(line => {{
     const cls = classifyLine(line);
-    if (logFilter !== 'all' && cls !== logFilter && targetId === 'logTerminal') return;
+    if (logFilter !== 'all' && cls !== logFilter) return;
     const tsMatch = line.match(/^(\\d{{2}}:\\d{{2}}:\\d{{2}}|\\d{{4}}-\\d{{2}}-\\d{{2}}[T ]\\d{{2}}:\\d{{2}}:\\d{{2}})/);
     if (tsMatch) {{
       const ts = tsMatch[1];
