@@ -192,20 +192,12 @@ class NexusTrader:
         # New trading day: re-arm the one-shot market-session guard (N-H2) and
         # the watchlist-ready gate so today's session can start fresh.
         self._session_started = False
+        self._confirm_job_started = False
         self._watchlist_ready.clear()
 
         try:
             self._bias = self._run_async(agent_i0.run)
             logger.info("Pre-market prep complete — bias cached for the day")
-            try:
-                from utils.analytics_logger import analytics
-                analytics.log_session_start(
-                    capital=self._portfolio.capital,
-                    bias_direction=self._bias.get("market_bias", "UNKNOWN") if self._bias else "UNKNOWN",
-                    bias_strength=self._bias.get("confidence", "UNKNOWN") if self._bias else "UNKNOWN",
-                )
-            except Exception as ae:
-                logger.debug("Analytics log_session_start failed (non-fatal): %s", ae)
         except Exception as exc:
             logger.warning("Pre-market prep failed: %s", exc)
             self._bias = None
