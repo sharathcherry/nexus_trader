@@ -12,11 +12,14 @@ Error return contract:
 import os
 import time
 from datetime import datetime, timedelta
+from typing import Any
 
 import pandas as pd
 import pytz
 import requests
 import yfinance as yf
+
+from typing import Any
 
 from data.upstox_keys import UPSTOX_KEYS
 from utils.logger import setup_logger
@@ -43,8 +46,8 @@ class MarketDataFetcher:
     - yfinance for global indices.
     All methods are error-tolerant: exceptions caught internally, safe values returned.
     """
-    # Cache to share data across all fetcher instances
-    _fetch_cache: dict[tuple, tuple[float, pd.DataFrame]] = {}
+    # Cache stores (timestamp, ttl, data)
+    _fetch_cache: dict[tuple, tuple[float, float, Any]] = {}
     _cache_ttl = 300  # 5 minutes TTL (daily data)
     _cache_ttl_intraday = 45  # below the 60s poll interval so every poll gets fresh data
 
@@ -72,7 +75,7 @@ class MarketDataFetcher:
         if len(cls._fetch_cache) < 200:
             return
         current_time = time.time()
-        to_delete = [k for k, (ts, _) in cls._fetch_cache.items() if current_time - ts > cls._cache_ttl]
+        to_delete = [k for k, (ts, ttl, _) in cls._fetch_cache.items() if current_time - ts > ttl]
         for k in to_delete:
             del cls._fetch_cache[k]
         
@@ -94,7 +97,7 @@ class MarketDataFetcher:
         current_time = time.time()
 
         if cache_key in self._fetch_cache:
-            cache_ts, cached_df = self._fetch_cache[cache_key]
+            cache_ts, cache_ttl, cached_df = self._fetch_cache[cache_key]
             if current_time - cache_ts < ttl:
                 return cached_df.copy()
 
@@ -105,7 +108,7 @@ class MarketDataFetcher:
                 logger.warning("_safe_fetch_yf(%s): empty response", symbol)
                 return pd.DataFrame()
             self._prune_cache()
-            self._fetch_cache[cache_key] = (current_time, df)
+            self._fetch_cache[cache_key] = (current_time, ttl, df)
             return df.copy()
         except Exception as exc:
             logger.error("_safe_fetch_yf(%s): %s", symbol, exc)
@@ -157,7 +160,7 @@ class MarketDataFetcher:
         current_time = time.time()
         ttl = self._cache_ttl_intraday if is_intraday else self._cache_ttl
         if cache_key in self._fetch_cache:
-            cache_ts, cached_df = self._fetch_cache[cache_key]
+            cache_ts, cache_ttl, cached_df = self._fetch_cache[cache_key]
             if current_time - cache_ts < ttl:
                 return cached_df.copy()
 
@@ -202,7 +205,7 @@ class MarketDataFetcher:
 
         if df is not None and not df.empty:
             self._prune_cache()
-            self._fetch_cache[cache_key] = (current_time, df)
+            self._fetch_cache[cache_key] = (current_time, ttl, df)
             return df.copy()
             
         return pd.DataFrame()
@@ -298,7 +301,7 @@ class MarketDataFetcher:
             cache_key = ("PREOPEN", tuple(sorted(sym_to_key.values())))
             current_time = time.time()
             if cache_key in self._fetch_cache:
-                cache_ts, cached = self._fetch_cache[cache_key]
+                cache_ts, cache_ttl, cached = self._fetch_cache[cache_key]
                 if current_time - cache_ts < 30:  # short TTL for live pre-open
                     return dict(cached)
 
@@ -340,7 +343,7 @@ class MarketDataFetcher:
                 result[sym] = {"price": last_price, "prev_close": prev_close}
 
             if result:
-                self._fetch_cache[cache_key] = (current_time, dict(result))
+                self._fetch_cache[cache_key] = (current_time, self._cache_ttl_intraday, dict(result))
             return result
         except Exception as exc:
             logger.error("get_preopen_snapshot: %s", exc)

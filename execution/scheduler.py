@@ -72,6 +72,7 @@ class NexusTrader:
         self._bias = None
         self._candidate_pool: list = []
         self._session_started = False  # N-H2 one-shot guard for market session
+        self._confirm_job_started = False  # Guard against confirm vs market session race
         logger.info(f"NexusTrader initialized (dry_run={dry_run})")
 
     # ------------------------------------------------------------------
@@ -196,6 +197,15 @@ class NexusTrader:
         try:
             self._bias = self._run_async(agent_i0.run)
             logger.info("Pre-market prep complete — bias cached for the day")
+            try:
+                from utils.analytics_logger import analytics
+                analytics.log_session_start(
+                    capital=self._portfolio.capital,
+                    bias_direction=self._bias.get("market_bias", "UNKNOWN") if self._bias else "UNKNOWN",
+                    bias_strength=self._bias.get("confidence", "UNKNOWN") if self._bias else "UNKNOWN",
+                )
+            except Exception as ae:
+                logger.debug("Analytics log_session_start failed (non-fatal): %s", ae)
         except Exception as exc:
             logger.warning("Pre-market prep failed: %s", exc)
             self._bias = None
@@ -241,6 +251,7 @@ class NexusTrader:
         self._watchlist. This is the ONLY job that sets _watchlist_ready — on a
         holiday it still sets the event so AgentI4 never hangs.
         """
+        self._confirm_job_started = True
         today = (
             date_override if date_override is not None
             else datetime.datetime.now(IST).date()
@@ -273,6 +284,23 @@ class NexusTrader:
 
         if self._watchlist:
             self._portfolio.save_watchlist(self._watchlist)
+
+        try:
+            from utils.analytics_logger import analytics
+            bias_str = self._bias.bias if self._bias else "UNKNOWN"
+            nifty_chg = 0.0
+            if self._bias and hasattr(self._bias, "gift_nifty_gap_pct"):
+                nifty_chg = self._bias.gift_nifty_gap_pct
+            analytics.log_session_start(
+                scan_count=len(self._candidate_pool) or 500,
+                watchlist_count=len(self._watchlist),
+                filters_applied={},
+                market_bias=bias_str,
+                nifty_chg_pct=nifty_chg,
+                capital=self._portfolio.capital,
+            )
+        except Exception as ae:
+            logger.debug("Analytics log_session_start failed (non-fatal): %s", ae)
 
     def run_pre_market_pipeline(self, date_override: date | None = None) -> None:
         """
@@ -343,7 +371,7 @@ class NexusTrader:
         # so the event is unset and AgentI4.run() would wait forever. The
         # market_session job only fires 09:15-15:15, after the pre-market
         # window, so an unset event here always means a restart.
-        if not self._watchlist_ready.is_set():
+        if not self._watchlist_ready.is_set() and not getattr(self, "_confirm_job_started", False):
             logger.info("Watchlist ready event not set (restart after pre-market) — setting from restored state")
             self._watchlist_ready.set()
 
@@ -373,6 +401,21 @@ class NexusTrader:
         """Run AgentI9 Claude Sonnet review after market close and backup DB."""
         reviewer = AgentI9(self._portfolio)
         reviewer.run()
+
+        try:
+            from utils.analytics_logger import analytics
+            report = self._portfolio.get_daily_report()
+            trades = report.get("trades", [])
+            total_trades = len(trades)
+            winners = sum(1 for t in trades if t.get("net_pnl", 0.0) > 0)
+            analytics.log_session_end(
+                capital_at_close=self._portfolio.capital,
+                session_pnl=report.get("daily_pnl", 0.0),
+                total_trades=total_trades,
+                winners=winners,
+            )
+        except Exception as ae:
+            logger.debug("Analytics log_session_end failed (non-fatal): %s", ae)
 
         # Daily backup of portfolio.db
         try:

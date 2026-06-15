@@ -627,6 +627,32 @@ class PaperPortfolio:
             "PARTIAL EXIT %s qty=%d @ Rs%.2f | P&L=Rs%s%.2f",
             symbol, exit_qty, exit_price, pnl_sign, net_pnl,
         )
+
+        # Deep analytics logging (non-fatal)
+        try:
+            from utils.analytics_logger import analytics
+            _pos = dict(position)
+            analytics.log_trade(
+                symbol=symbol,
+                strategy=_pos.get("strategy", "UNKNOWN"),
+                entry_price=_pos["entry_price"],
+                fill_price=_pos["entry_price"],
+                exit_price=exit_price,
+                qty=exit_qty,
+                stop_loss=_pos.get("stop_loss", 0.0),
+                target=_pos.get("target", 0.0),
+                exit_reason=exit_reason,
+                gross_pnl=round(gross_pnl, 4),
+                brokerage=charges["brokerage"],
+                net_pnl=round(net_pnl, 4),
+                capital_before=current_capital,
+                capital_after=new_capital,
+                entry_time=_pos.get("entry_time", ""),
+                exit_time=exit_time,
+            )
+        except Exception as _ae:
+            logger.debug("Analytics log failed (non-fatal): %s", _ae)
+
         return True
 
     def update_stop_loss(self, symbol: str, new_stop_loss: float) -> bool:
