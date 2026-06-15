@@ -278,17 +278,21 @@ def apply_direction_filter(
     """
     Filter candidates based on market bias direction.
 
-    BULLISH: only gap-UP stocks (momentum with the market)
-    BEARISH: only gap-DOWN stocks (mean-reversion plays, not chasing longs)
-    NEUTRAL: all candidates (both directions acceptable)
+    The primary edge — gap-DOWN mean reversion (GAP_FILL) — is direction-
+    agnostic and must survive in ALL bias regimes, so gap-downs are never
+    stripped here. Only gap-UP longs are bias-gated:
+
+    BULLISH: gap-ups (momentum) + gap-downs (mean reversion) — keep everything
+    NEUTRAL: keep everything
+    BEARISH: gap-downs only — gap-up longs against a bearish tape are dropped
     """
-    if bias.bias == "BULLISH":
-        filtered = [c for c in candidates if c.gap_pct > 0]
-    elif bias.bias == "BEARISH":
-        # On bearish days allow gap-DOWN candidates only (GAP_FILL plays).
-        # Gap-up stocks on bearish days are handled by AgentI3 (_SKIP sentinel).
+    if bias.bias == "BEARISH":
+        # Don't chase gap-up longs against a bearish macro tape; keep gap-downs
+        # (GAP_FILL). Gap-ups are also handled by AgentI3's _SKIP sentinel.
         filtered = [c for c in candidates if c.gap_pct < 0]
     else:
+        # BULLISH / NEUTRAL: keep both directions. AgentI3 routes gap-downs to
+        # GAP_FILL and gap-ups to the appropriate momentum strategy.
         filtered = candidates
 
     logger.info(

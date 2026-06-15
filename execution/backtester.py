@@ -21,11 +21,23 @@ class NexusBacktester:
         self.start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
         self.end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
         self.capital = capital if capital is not None else config.CAPITAL
+        # Per-symbol date-indexed OHLCV DataFrame, fetched once for the whole window.
+        self._cache: dict[str, Any] = {}
         logger.info(f"NexusBacktester: {start_date} → {end_date}, capital=₹{self.capital:,.0f}")
 
-    def _fetch_day_data(self, symbols: list[str], trade_date: date) -> dict[str, dict]:
-        """Fetch OHLCV for all symbols in batches of 20. Returns per-symbol dicts."""
-        result: dict[str, dict] = {}
+    def _prefetch_all(self, symbols: list[str]) -> None:
+        """
+        Download the full backtest window once, batched, into self._cache.
+
+        Fetches [start_date - 15 days, end_date + 1 day] so each trade day has a
+        prior session available for the gap calculation. Uses explicit start/end
+        dates — NOT period="5d", which is relative to today and silently returns
+        no rows for any historical date.
+        """
+        import pandas as pd
+
+        fetch_start = (self.start_date - timedelta(days=15)).isoformat()
+        fetch_end = (self.end_date + timedelta(days=1)).isoformat()
         batch_size = 20
 
         for i in range(0, len(symbols), batch_size):
@@ -33,57 +45,74 @@ class NexusBacktester:
             try:
                 raw = yf.download(
                     tickers=batch,
-                    period="5d",
+                    start=fetch_start,
+                    end=fetch_end,
                     interval="1d",
                     auto_adjust=True,
                     progress=False,
+                    group_by="column",
                 )
                 time.sleep(0.2)  # rate-limit guard after every batch
 
-                if raw.empty:
+                if raw is None or raw.empty:
                     logger.warning(f"Batch returned empty DataFrame for {batch[:3]}...")
                     continue
 
                 for sym in batch:
                     try:
-                        # Single-ticker: flat Index; multi-ticker: MultiIndex
-                        if len(batch) == 1:
-                            sym_df = raw
-                        else:
-                            sym_df = raw.xs(sym, axis=1, level=1)
+                        # Single-ticker: flat Index; multi-ticker: MultiIndex (field, ticker)
+                        sym_df = raw if len(batch) == 1 else raw.xs(sym, axis=1, level=1)
+                        if sym_df is None or sym_df.empty:
+                            continue
 
+                        sym_df = sym_df.dropna(subset=["Open", "High", "Low", "Close"])
                         if sym_df.empty:
                             continue
 
                         # Strip timezone so date comparisons work
-                        sym_df.index = (
-                            sym_df.index.tz_localize(None)
-                            if hasattr(sym_df.index, "tz_localize") and sym_df.index.tz
-                            else sym_df.index
-                        )
-                        target_rows = [r for r in sym_df.index if r.date() == trade_date]
-                        prev_rows = [r for r in sym_df.index if r.date() < trade_date]
+                        if hasattr(sym_df.index, "tz") and sym_df.index.tz is not None:
+                            sym_df = sym_df.copy()
+                            sym_df.index = sym_df.index.tz_localize(None)
 
-                        if not target_rows or not prev_rows:
-                            continue
-
-                        today_row = sym_df.loc[target_rows[-1]]
-                        prev_row = sym_df.loc[prev_rows[-1]]
-
-                        result[sym] = {
-                            "prev_close": float(prev_row["Close"]),
-                            "prev_volume": float(prev_row["Volume"]),
-                            "open": float(today_row["Open"]),
-                            "high": float(today_row["High"]),
-                            "low": float(today_row["Low"]),
-                            "close": float(today_row["Close"]),
-                        }
+                        self._cache[sym] = sym_df.sort_index()
                     except Exception as e:
-                        logger.debug(f"{sym}: skipped ({e})")
+                        logger.debug(f"{sym}: prefetch skipped ({e})")
                         continue
             except Exception as e:
                 logger.warning(f"Batch fetch failed for {batch[:3]}: {e}")
                 time.sleep(0.2)
+                continue
+
+        logger.info(f"Prefetched price history for {len(self._cache)}/{len(symbols)} symbols")
+
+    def _fetch_day_data(self, symbols: list[str], trade_date: date) -> dict[str, dict]:
+        """Resolve one day's OHLCV (+ prior close/volume) for all symbols from cache."""
+        result: dict[str, dict] = {}
+
+        for sym in symbols:
+            sym_df = self._cache.get(sym)
+            if sym_df is None or sym_df.empty:
+                continue
+            try:
+                idx = sym_df.index
+                target_rows = [r for r in idx if r.date() == trade_date]
+                prev_rows = [r for r in idx if r.date() < trade_date]
+                if not target_rows or not prev_rows:
+                    continue
+
+                today_row = sym_df.loc[target_rows[-1]]
+                prev_row = sym_df.loc[prev_rows[-1]]
+
+                result[sym] = {
+                    "prev_close": float(prev_row["Close"]),
+                    "prev_volume": float(prev_row["Volume"]),
+                    "open": float(today_row["Open"]),
+                    "high": float(today_row["High"]),
+                    "low": float(today_row["Low"]),
+                    "close": float(today_row["Close"]),
+                }
+            except Exception as e:
+                logger.debug(f"{sym}: day-resolve skipped ({e})")
                 continue
 
         return result
@@ -106,15 +135,23 @@ class NexusBacktester:
                 equity_curve.append(running_capital)
                 return [], running_capital
 
-            # Gap filter and candidate scoring
+            # Candidate selection — mirrors the live strategy (agent_i3):
+            # the validated edge is gap-DOWN mean reversion (GAP_FILL). Only
+            # large gap-DOWNs are taken; gap-ups are skipped (chasing them was a
+            # proven money-loser). Entry at open, flat 1.5% stop, target = the
+            # prior close (the "fill"). The MIN_RR gate then keeps only gaps wide
+            # enough to clear a 1.5 reward:risk against the 1.5% stop.
+            GAP_FILL_MIN = 3.0       # only fade gap-downs of >= 3% (the edge bucket)
+            STOP_PCT = 0.015         # flat 1.5% stop (best OOS backtest config)
+
             candidates = []
             for sym, d in day_data.items():
                 if d["prev_close"] <= 0:
                     continue
                 gap_pct = (d["open"] - d["prev_close"]) / d["prev_close"] * 100
 
-                # Apply filters
-                if not (config.GAP_MIN_PCT <= abs(gap_pct) <= config.GAP_MAX_PCT):
+                # GAP_FILL direction + size filter: gap-DOWN only, 3-8%
+                if not (-config.GAP_MAX_PCT <= gap_pct <= -GAP_FILL_MIN):
                     continue
                 if d["prev_volume"] < config.MIN_PREV_VOLUME:
                     continue
@@ -133,8 +170,12 @@ class NexusBacktester:
 
             for gap_score, sym, d, gap_pct in candidates:
                 entry = d["open"]
-                target = entry * (1 + config.MIN_RR_RATIO * config.RISK_PER_TRADE_PCT)
-                stop = entry * (1 - config.RISK_PER_TRADE_PCT)
+                target = d["prev_close"]            # gap fill: rally back to prior close
+                stop = entry * (1 - STOP_PCT)
+
+                # Enforce min reward:risk — skip gaps too small to be worth it
+                if (target - entry) / (entry - stop) < config.MIN_RR_RATIO:
+                    continue
 
                 # Position sizing
                 risk_amount = running_capital * config.RISK_PER_TRADE_PCT
@@ -268,6 +309,10 @@ class NexusBacktester:
         equity_curve: list[float] = [self.capital]
         running_capital = self.capital
         trading_days_processed = 0
+
+        # One-shot fetch of the full window before simulating any day.
+        universe = get_nse_universe()
+        self._prefetch_all([s["symbol"] for s in universe])
 
         current_date = self.start_date
         while current_date <= self.end_date:
