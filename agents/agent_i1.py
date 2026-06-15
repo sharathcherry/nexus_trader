@@ -24,6 +24,7 @@ Returns top MAX_GAP_CANDIDATES by gap_score.
 """
 
 import asyncio
+from datetime import datetime
 
 import pytz
 
@@ -135,7 +136,12 @@ def _scan_preopen(universe: list[dict]) -> list[GapCandidate]:
             if len(hist) < 2:
                 continue
 
-            prev_volume = hist["Volume"].iloc[-2]
+            # Determine which row is yesterday
+            today_date = datetime.now(IST).date()
+            if hist.index[-1].date() == today_date:
+                prev_volume = hist["Volume"].iloc[-2] if len(hist) > 1 else hist["Volume"].iloc[-1]
+            else:
+                prev_volume = hist["Volume"].iloc[-1]
 
             # Filter 2: previous day volume
             if prev_volume < config.MIN_PREV_VOLUME:
@@ -196,7 +202,12 @@ def _scan_live(universe: list[dict]) -> list[GapCandidate]:
             if len(hist) < 2:
                 continue
 
-            prev_volume = hist["Volume"].iloc[-2]
+            # Determine which row is yesterday
+            today_date = datetime.now(IST).date()
+            if hist.index[-1].date() == today_date:
+                prev_volume = hist["Volume"].iloc[-2] if len(hist) > 1 else hist["Volume"].iloc[-1]
+            else:
+                prev_volume = hist["Volume"].iloc[-1]
 
             intraday_df = fetcher.get_intraday_candles(symbol)
             if intraday_df is not None and not intraday_df.empty:

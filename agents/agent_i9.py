@@ -245,7 +245,7 @@ class AgentI9:
     # ------------------------------------------------------------------
 
     def run(self) -> DailyReview | None:
-        today_str    = date.today().strftime("%Y%m%d")
+        today_str    = datetime.now(IST).strftime("%Y%m%d")
         _state       = "failed"
         _fail_detail = ""
         review: DailyReview | None = None

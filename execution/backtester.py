@@ -35,7 +35,6 @@ class NexusBacktester:
                     tickers=batch,
                     period="5d",
                     interval="1d",
-                    group_by="ticker",
                     auto_adjust=True,
                     progress=False,
                 )
@@ -142,7 +141,10 @@ class NexusBacktester:
                 risk_per_share = entry - stop
                 if risk_per_share <= 0:
                     continue
+                
                 qty = max(1, int(risk_amount / risk_per_share))
+                max_qty = int((running_capital * config.MAX_POSITION_PCT) / entry)
+                qty = min(qty, max_qty) if max_qty > 0 else qty
 
                 # Exit logic: STOP_HIT wins if both hit same day (conservative backtesting)
                 if d["high"] >= target and d["low"] <= stop:

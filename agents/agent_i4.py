@@ -380,23 +380,22 @@ class AgentI4:
                 self.bought_symbols.add(sym)
                 logger.info(
                     "BUY %s at %.2f qty=%d strategy=%s",
-                    sym, current_price, qty, strategy,
+                    sym, fill_price, qty, strategy,
                 )
-                rr = round((entry.target - current_price) / max(current_price - entry.stop_loss, 0.01), 2)
                 dlog.buy_decision(
                     symbol=sym,
                     strategy=strategy,
-                    entry_price=current_price,
+                    entry_price=fill_price,
                     stop_loss=entry.stop_loss,
                     target=entry.target,
                     qty=qty,
-                    rr_ratio=rr,
+                    rr_ratio=round(fill_rr, 2),
                     gap_pct=entry.gap_pct,
                     market_bias="UNKNOWN",  # bias logged separately by AgentI0
-                    trigger_condition=f"price Rs{current_price:.2f} crossed entry_trigger Rs{entry.entry_trigger:.2f}",
+                    trigger_condition=f"price Rs{current_price:.2f} crossed entry_trigger Rs{entry.entry_trigger:.2f} (fill: {fill_price:.2f})",
                 )
                 notifier.send_buy(
-                    sym, current_price, qty, strategy,
+                    sym, fill_price, qty, strategy,
                     entry.stop_loss, entry.target,
                 )
 

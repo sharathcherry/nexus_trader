@@ -278,7 +278,10 @@ class AnalyticsLogger:
         # Live portfolio from DB
         if DB_PATH.exists():
             try:
-                conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
+                conn = sqlite3.connect(DB_PATH, timeout=10.0)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=5000")
+                conn.row_factory = sqlite3.Row
                 ctx["capital"] = float(
                     (conn.execute("SELECT value FROM meta WHERE key='capital'").fetchone() or [100000])[0]
                 )
@@ -304,7 +307,8 @@ class AnalyticsLogger:
 
         # Decision log excerpt
         dec_dir = Path("logs/decisions")
-        dec_files = sorted(dec_dir.glob(f"decisions_{_today()}*.json"), reverse=True) if dec_dir.exists() else []
+        today_dash = _now_ist().strftime("%Y-%m-%d")
+        dec_files = sorted(dec_dir.glob(f"decisions_{today_dash}*.log"), reverse=True) if dec_dir.exists() else []
         if dec_files:
             try:
                 decisions = _load_json(dec_files[0]) or []

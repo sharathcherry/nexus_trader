@@ -752,10 +752,10 @@ let logFilter = 'all';
 function classifyLine(line) {{
   const up = line.toUpperCase();
   if (up.includes('ERROR') || up.includes('TRACEBACK') || up.includes('EXCEPTION')) return 'err';
+  if (up.includes('WARN') || up.includes('SLIPPAGE') || up.includes('TIMEOUT') || up.includes('CIRCUIT') || up.includes('POSSIBLE_CIRCUIT') || up.includes('REJECTED')) return 'warn';
+  if (up.includes('SKIPPED') || up.includes('SESSION') || up.includes('MARKET OPEN') || up.includes('WATCHLIST') || up.includes('SCHEDULER') || up.includes('RUN TIME') || up.includes('EXECUTION OF JOB') || up.includes('RESTORED')) return 'auto';
   if (up.includes('BUY ') || up.includes('BOUGHT')) return 'buy';
-  if (up.includes('SELL ') || up.includes('SOLD') || up.includes('SQUAREOFF')) return 'sell';
-  if (up.includes('WARN') || up.includes('SLIPPAGE') || up.includes('TIMEOUT') || up.includes('CIRCUIT') || up.includes('POSSIBLE_CIRCUIT')) return 'warn';
-  if (up.includes('SKIPPED') || up.includes('SESSION') || up.includes('MARKET OPEN') || up.includes('WATCHLIST') || up.includes('SCHEDULER') || up.includes('RUN TIME') || up.includes('EXECUTION OF JOB')) return 'auto';
+  if (up.includes('SELL ') || up.includes('SOLD') || up.includes('SQUAREOFF') || up.includes('PARTIAL EXIT')) return 'sell';
   return 'info';
 }}
 

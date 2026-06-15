@@ -108,15 +108,30 @@ def _classify_news(candidate: GapCandidate) -> NewsAnalysis:
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=NewsAnalysis,
             ),
         )
 
-        result = response.parsed
-        if result is None:
-            raise ValueError("response.parsed is None")
+        import json
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
 
-        return result
+        try:
+            parsed_dict = json.loads(text)
+        except json.JSONDecodeError:
+            # Fallback for completely invalid responses
+            raise ValueError(f"Failed to parse JSON: {text}")
+
+        return NewsAnalysis(
+            catalyst_type=parsed_dict.get("catalyst_type", "UNKNOWN"),
+            trade_recommendation=parsed_dict.get("trade_recommendation", "UNKNOWN"),
+            summary=parsed_dict.get("summary", "Unknown"),
+        )
 
     except Exception as e:
         logger.warning(f"{candidate.symbol}: Gemini classification failed ({e})")
