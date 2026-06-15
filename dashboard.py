@@ -195,11 +195,11 @@ def generate_html(starting_capital: float = 100_000.0) -> str:
             r += (f'<tr>'
                   f'<td><b>{_esc(p["symbol"])}</b></td>'
                   f'<td class="dim">{strat_label}</td>'
-                  f'<td>{entry_val:,.0f}</td>'
+                  f'<td>{entry_val:,.2f}</td>'
                   f'<td><b>—</b></td>'
                   f'<td class="dim">—</td>'
-                  f'<td class="{sl_cls}">{sl_val:,.0f}</td>'
-                  f'<td class="pos">{p.get("target",0):,.0f}</td>'
+                  f'<td class="{sl_cls}">{sl_val:,.2f}</td>'
+                  f'<td class="pos">{p.get("target",0):,.2f}</td>'
                   f'<td>{p.get("qty",0)}</td>'
                   f'</tr>')
         return r
