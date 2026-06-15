@@ -180,6 +180,7 @@ class DecisionLogger:
         brokerage: float,
         entry_time: str,
         strategy: str,
+        exit_time: str = "",
     ) -> None:
         """Log every sell with full P&L breakdown and hold time."""
         direction = "PROFIT" if net_pnl >= 0 else "LOSS"
@@ -193,8 +194,22 @@ class DecisionLogger:
                     entry_dt = IST.localize(entry_dt)
                 else:
                     entry_dt = entry_dt.astimezone(IST)
+
+            if exit_time:
+                try:
+                    exit_dt = datetime.strptime(exit_time, "%Y-%m-%d %H:%M:%S")
+                    exit_dt = IST.localize(exit_dt)
+                except ValueError:
+                    exit_dt = datetime.fromisoformat(exit_time.replace("Z", "+00:00"))
+                    if exit_dt.tzinfo is None:
+                        exit_dt = IST.localize(exit_dt)
+                    else:
+                        exit_dt = exit_dt.astimezone(IST)
+            else:
+                exit_dt = datetime.now(IST)
+
             hold_mins = int(
-                (datetime.now(IST) - entry_dt).total_seconds() / 60
+                (exit_dt - entry_dt).total_seconds() / 60
             )
             hold_str = f"{hold_mins} min"
         except Exception:
