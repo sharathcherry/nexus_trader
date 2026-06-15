@@ -19,8 +19,6 @@ import pytz
 import requests
 import yfinance as yf
 
-from typing import Any
-
 from data.upstox_keys import UPSTOX_KEYS
 from utils.logger import setup_logger
 
