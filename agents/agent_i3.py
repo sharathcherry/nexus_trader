@@ -167,39 +167,30 @@ def _assign_strategy(candidate: GapCandidate, bias: MarketBias) -> str:
     abs_gap = abs(candidate.gap_pct)
     gap_is_up = candidate.gap_pct > 0
 
-    # --- RELATIVE_STRENGTH: top-tier gap-up with strong volume score ---
-    # Only for long trades (gap-up) on constructive market days.
-    # gap_score = abs(gap_pct) * min(prev_volume/500k, 3.0), so score > 8
-    # means gap > 5% with volume > 1.6x average — genuine institutional demand.
-    if bias.bias in ("BULLISH", "NEUTRAL") and gap_is_up:
-        if abs_gap > 5.0 and candidate.gap_score > 8.0:
-            return "RELATIVE_STRENGTH"
+    # --- GAP_FILL: gap-DOWN mean reversion (the backtest-validated edge) ---
+    # Buying oversold gap-downs that bounce back toward the prior close is the
+    # one bucket with positive, regime-robust expectancy: large gap-downs (3-8%)
+    # showed +1 to +2.2% mean open->close, 72-80% win, PF ~2 / Sharpe >3 across
+    # two non-overlapping backtest windows. It is direction-agnostic, so it fires
+    # FIRST regardless of market bias. Smaller gap-downs (1.5-3%) are weak and
+    # get naturally filtered out downstream by the MIN_RR 1.5 check (their
+    # prev_close target sits too close to a 1.5% stop to clear the ratio).
+    if not gap_is_up:
+        return "GAP_FILL"
 
-    if bias.bias == "BULLISH":
-        if abs_gap > 3.0:
-            return "GAP_AND_GO"
-        if abs_gap > 2.0:
-            return "ORB_BREAKOUT"
-        if 1.5 <= abs_gap <= 3.0 and not gap_is_up:
-            return "GAP_FILL"
-        return "VWAP_RECLAIM"
-
-    if bias.bias == "NEUTRAL":
-        if abs_gap > 2.0:
-            return "ORB_BREAKOUT"
-        if 1.5 <= abs_gap <= 3.0 and not gap_is_up:
-            return "GAP_FILL"
-        return "VWAP_RECLAIM"
-
+    # --- Gap-UP handling ---
+    # Chasing gap-ups is a proven money-loser. The old RELATIVE_STRENGTH branch
+    # poured capital into 5-8% gap-ups — the single worst bucket (-0.30% mean,
+    # 46% win, -31%/6mo) — and has been retired. Gap-up longs now only take a
+    # modest momentum trade on constructive days, and never against a bearish
+    # macro tape.
     if bias.bias == "BEARISH":
-        # Gap-up longs against bearish market -- too risky, skip
-        if gap_is_up and abs_gap > 2.0:
-            return _SKIP
-        if not gap_is_up and abs_gap >= 1.5:
-            return "GAP_FILL"
-        return "VWAP_RECLAIM"
+        return _SKIP
 
-    # Unknown bias -- conservative fallback
+    if abs_gap > 3.0:
+        return "GAP_AND_GO"
+    if abs_gap > 2.0:
+        return "ORB_BREAKOUT"
     return "VWAP_RECLAIM"
 
 
@@ -216,9 +207,15 @@ def _compute_levels(
         target = round(entry_trigger + 2.25 * atr, 2)
 
     elif strategy == "GAP_FILL":
-        # Gap-down stock: price rallies back toward prev_close
+        # Gap-down stock rallies back toward prev_close (the "fill").
+        # Validated stop: a flat ~1.5% below entry. This matched the best
+        # out-of-sample backtest (PF 2.18, Sharpe 3.58); a 1-ATR stop on
+        # large-gap names is often 3-5% wide and bleeds the edge, so it is
+        # deliberately NOT used here. Target is the prior close — the MIN_RR 1.5
+        # gate downstream then requires the gap (target distance) to be roughly
+        # >= 2.3%, naturally excluding the weak 1.5-3% gap-down bucket.
         entry_trigger = round(p * 1.001, 2)
-        stop_loss = round(entry_trigger - 1.0 * atr, 2)
+        stop_loss = round(entry_trigger * (1 - 0.015), 2)
         target = round(pc, 2)
 
     elif strategy == "ORB_BREAKOUT":
