@@ -134,6 +134,7 @@ class AgentI6:
                     brokerage=charges["brokerage"],
                     entry_time=pos.get("entry_time", ""),
                     strategy=pos.get("strategy", ""),
+                    exit_time=current_time.strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 notifier.send_sell(sym, fill_price, pos["qty"], "SL_HIT")
                 continue
@@ -156,6 +157,7 @@ class AgentI6:
                     brokerage=charges["brokerage"],
                     entry_time=pos.get("entry_time", ""),
                     strategy=pos.get("strategy", ""),
+                    exit_time=current_time.strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 notifier.send_sell(sym, fill_price, pos["qty"], "TARGET_HIT")
                 continue
