@@ -118,8 +118,11 @@ def _scan_preopen(universe: list[dict]) -> list[GapCandidate]:
         logger.warning("Pre-open: no symbols passed gap+price filters")
         return []
 
-    # Sort by preliminary gap size and take a shortlist for enrichment
-    cheap_candidates.sort(key=lambda x: x[0], reverse=True)
+    # Prioritise gap-DOWNs, then by gap size. Gap-ups are retired (agent_i3
+    # _SKIPs them), so letting them consume the shortlist budget ahead of
+    # tradeable gap-downs would starve the only +EV strategy on gap-up-heavy
+    # days. x[4] = gap_pct.
+    cheap_candidates.sort(key=lambda x: (x[4] < 0, x[0]), reverse=True)
     shortlist = cheap_candidates[:_PREOPEN_SHORTLIST_SIZE]
     logger.info(
         "Pre-open: %d symbols in gap range → enriching top %d shortlist",
@@ -169,7 +172,8 @@ def _scan_preopen(universe: list[dict]) -> list[GapCandidate]:
         logger.warning("Pre-open: fewer than 3 enriched candidates -- NO_TRADE_DAY")
         return []
 
-    candidates.sort(key=lambda c: c.gap_score, reverse=True)
+    # Gap-DOWNs first (the only tradeable direction), then by gap_score.
+    candidates.sort(key=lambda c: (c.gap_pct < 0, c.gap_score), reverse=True)
     result = candidates[: config.MAX_GAP_CANDIDATES]
     logger.info(
         "AgentI1 pre-open: %d enriched → top %d selected",
@@ -262,7 +266,9 @@ def _scan_live(universe: list[dict]) -> list[GapCandidate]:
         logger.warning("Fewer than 3 gap candidates found -- NO_TRADE_DAY")
         return []
 
-    candidates.sort(key=lambda candidate: candidate.gap_score, reverse=True)
+    # Gap-DOWNs first (the only tradeable direction), then by gap_score, so
+    # retired gap-ups never crowd tradeable gap-downs out of the top-N budget.
+    candidates.sort(key=lambda candidate: (candidate.gap_pct < 0, candidate.gap_score), reverse=True)
     result = candidates[: config.MAX_GAP_CANDIDATES]
     logger.info(
         "AgentI1 found %s candidates -> top %s selected",
