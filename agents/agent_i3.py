@@ -184,14 +184,12 @@ def _assign_strategy(candidate: GapCandidate, bias: MarketBias) -> str:
     # 46% win, -31%/6mo) — and has been retired. Gap-up longs now only take a
     # modest momentum trade on constructive days, and never against a bearish
     # macro tape.
-    if bias.bias == "BEARISH":
-        return _SKIP
-
-    if abs_gap > 3.0:
-        return "GAP_AND_GO"
-    if abs_gap > 2.0:
-        return "ORB_BREAKOUT"
-    return "VWAP_RECLAIM"
+    # Gap-UP longs are retired entirely. Every backtested gap-up bucket is
+    # negative expectancy (5-8% gap-ups: -0.30% mean O->C, 46% win, -31%/6mo);
+    # chasing them only loses capital faster. The sole +EV edge is the gap-DOWN
+    # fill above, so on gap-up days the system intentionally trades nothing
+    # rather than feed the loser. bias is now irrelevant for gap-ups.
+    return _SKIP
 
 
 def _compute_levels(

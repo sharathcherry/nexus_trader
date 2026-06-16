@@ -20,9 +20,11 @@ class Config:
 
         # Capital and risk
         self.CAPITAL              = 100_000
-        self.RISK_PER_TRADE_PCT   = 0.01   # 1% risk per trade
-        self.MAX_POSITION_PCT     = 0.20   # 20% of capital per position (5x Rs20k = Rs1,00,000)
-        self.DAILY_LOSS_LIMIT_PCT = 0.02   # halt if daily P&L < -2%
+        self.RISK_PER_TRADE_PCT   = 0.02   # 2% risk per trade (aggressive; gap-fill is 72-80% win)
+        self.MAX_POSITION_PCT     = 0.40   # 40% cap per position -- prev 20% throttled gap-fill
+                                           # risk to ~0.3% (1.5% stop * 20% = Rs300). 40% lets the
+                                           # 2% risk budget actually bind on bigger gap-fill fills.
+        self.DAILY_LOSS_LIMIT_PCT = 0.04   # halt if daily P&L < -4% (raised with 2x sizing)
 
         # Position limits
         self.MAX_OPEN_POSITIONS      = 5
