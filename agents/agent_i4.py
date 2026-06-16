@@ -329,22 +329,6 @@ class AgentI4:
             if not signal:
                 continue
 
-            # Quantity sizing
-            if order_manager is not None:
-                current_prices = {s: float(d["Close"].iloc[-1]) for s, d in candles_map.items() if d is not None and not d.empty}
-                qty = order_manager.calculate_quantity(
-                    current_price, entry.stop_loss, current_prices
-                )
-            else:
-                qty = 1
-
-            if qty <= 0:
-                logger.debug(
-                    "BUY SKIPPED %s — qty=0 (entry=%.2f sl=%.2f)",
-                    sym, current_price, entry.stop_loss,
-                )
-                continue
-
             # Apply entry slippage to simulate real NSE market-order fills
             fill_price = round(current_price * (1 + SLIPPAGE_PCT), 2)
 
@@ -356,13 +340,40 @@ class AgentI4:
                 if fill_price > entry.entry_trigger * 1.01:
                     logger.debug("BUY SKIPPED %s — chase guard hit (fill %.2f > trigger %.2f * 1.01)", sym, fill_price, entry.entry_trigger)
                     continue
-                
-            # Re-validate R:R with actual fill price
-            denom = fill_price - entry.stop_loss
+
+            # Effective stop. For GAP_FILL the validated backtest sets the stop a
+            # flat 1.5% below the ACTUAL entry, not below the pre-market price.
+            # Anchoring to the stale watchlist stop (computed off the premarket
+            # price) inflates the fill->stop distance once price ticks up and
+            # crushes the R:R below the gate, starving the edge of entries.
+            # Recompute from the real fill so live risk == backtested risk.
+            from config import config
+            if strategy == "GAP_FILL":
+                effective_stop = round(fill_price * (1 - 0.015), 2)
+            else:
+                effective_stop = entry.stop_loss
+
+            # Quantity sizing (uses the effective stop so risk == 1% of capital)
+            if order_manager is not None:
+                current_prices = {s: float(d["Close"].iloc[-1]) for s, d in candles_map.items() if d is not None and not d.empty}
+                qty = order_manager.calculate_quantity(
+                    fill_price, effective_stop, current_prices
+                )
+            else:
+                qty = 1
+
+            if qty <= 0:
+                logger.debug(
+                    "BUY SKIPPED %s — qty=0 (entry=%.2f sl=%.2f)",
+                    sym, fill_price, effective_stop,
+                )
+                continue
+
+            # Re-validate R:R with actual fill price and effective stop
+            denom = fill_price - effective_stop
             if denom <= 0:
                 continue
             fill_rr = (entry.target - fill_price) / denom
-            from config import config
             if fill_rr < config.MIN_RR_RATIO:
                 logger.debug("BUY SKIPPED %s — R:R at fill %.2f < %.2f", sym, fill_rr, config.MIN_RR_RATIO)
                 continue
@@ -371,7 +382,7 @@ class AgentI4:
                 sym,
                 fill_price,
                 qty,
-                entry.stop_loss,
+                effective_stop,
                 entry.target,
                 entry.strategy,
             )
@@ -386,7 +397,7 @@ class AgentI4:
                     symbol=sym,
                     strategy=strategy,
                     entry_price=fill_price,
-                    stop_loss=entry.stop_loss,
+                    stop_loss=effective_stop,
                     target=entry.target,
                     qty=qty,
                     rr_ratio=round(fill_rr, 2),
@@ -396,7 +407,7 @@ class AgentI4:
                 )
                 notifier.send_buy(
                     sym, fill_price, qty, strategy,
-                    entry.stop_loss, entry.target,
+                    effective_stop, entry.target,
                 )
 
     # ------------------------------------------------------------------
