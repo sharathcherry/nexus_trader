@@ -80,11 +80,12 @@ def get_upstox_access_token():
             time.sleep(0.05)
             
         time.sleep(1)
+        totp_input.send_keys(Keys.RETURN)
         
-        # Click Continue using ActionChains
+        # Click Continue using JS as a fallback
         try:
             continue_btn = wait.until(EC.element_to_be_clickable((By.ID, "continueBtn")))
-            ActionChains(driver).move_to_element(continue_btn).click().perform()
+            driver.execute_script("arguments[0].click();", continue_btn)
             time.sleep(2)
         except Exception as e:
             logger.error(f"Could not click continueBtn: {e}")
