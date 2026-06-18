@@ -71,16 +71,16 @@ def get_upstox_access_token():
         totp = pyotp.TOTP(totp_secret)
         current_totp = totp.now()
 
-        # Type the TOTP slowly to trigger React events using ActionChains
         totp_input = wait.until(EC.presence_of_element_located((By.ID, "otpNum")))
-        actions = ActionChains(driver)
-        actions.click(totp_input)
-        actions.pause(0.5)
-        for digit in current_totp:
-            actions.send_keys(digit)
-            actions.pause(0.1)
-        actions.perform()
-        
+        # Use native setter to bypass React's synthetic event trap
+        driver.execute_script("""
+            var input = arguments[0];
+            var value = arguments[1];
+            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            nativeInputValueSetter.call(input, value);
+            var event = new Event('input', { bubbles: true });
+            input.dispatchEvent(event);
+        """, totp_input, current_totp)
         time.sleep(1)
         
         # Click Continue using JS as a fallback
