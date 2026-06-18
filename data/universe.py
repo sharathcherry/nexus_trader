@@ -357,10 +357,11 @@ _NSE_UNIVERSE = [
     {"symbol": "WELSPUNLIV.NS", "sector": "Textiles"},
     {"symbol": "WHIRLPOOL.NS", "sector": "Consumer Durables"},
     {"symbol": "PAYTM.NS", "sector": "Financial Services"},
-    {"symbol": "ZOMATO.NS", "sector": "Consumer Services"},
-    {"symbol": "LTIM.NS", "sector": "IT"},
+    {"symbol": "ETERNAL.NS", "sector": "Consumer Services"},  # renamed from ZOMATO (2025); Upstox-mapped
+    # LTIM.NS and TATAMOTORS.NS removed: no Upstox instrument key. LTIM is absent
+    # from the Upstox master; TATAMOTORS demerged into TMCV/TMPV (no single
+    # "TATAMOTORS" listing) -- left out rather than mapped to a wrong entity.
     {"symbol": "MRF.NS", "sector": "Auto"},
-    {"symbol": "TATAMOTORS.NS", "sector": "Auto"},
 ]
 
 
