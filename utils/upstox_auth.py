@@ -92,20 +92,18 @@ def get_upstox_access_token():
         # Try to find PIN input or check if we already redirected
         logger.info("Entering PIN...")
         try:
-            pin_input = wait.until(EC.presence_of_element_located((By.ID, "val")))
+            short_wait = WebDriverWait(driver, 3)
+            pin_input = short_wait.until(EC.presence_of_element_located((By.ID, "val")))
             pin_input.send_keys(pin)
             pin_input.send_keys(Keys.RETURN)
         except Exception:
-            logger.error("Failed to find PIN input.")
-            driver.save_screenshot("upstox_pin_error.png")
-            with open("upstox_page.html", "w", encoding="utf-8") as f:
-                f.write(driver.page_source)
-            raise
+            logger.warning("Failed to find PIN input, proceeding assuming redirect or PIN step removed.")
         
         # In the new UI, entering the 6-digit PIN automatically submits.
         # If it doesn't, we can try to click continue.
         try:
-            pin_continue_btn = wait.until(EC.element_to_be_clickable((By.ID, "pinContinueBtn")))
+            short_wait = WebDriverWait(driver, 3)
+            pin_continue_btn = short_wait.until(EC.element_to_be_clickable((By.ID, "pinContinueBtn")))
             pin_continue_btn.click()
         except Exception:
             pass
