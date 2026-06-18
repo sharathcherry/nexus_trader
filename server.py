@@ -13,8 +13,14 @@ from pathlib import Path
 import pytz
 import yfinance as yf
 from flask import Flask, jsonify
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import dashboard
+from data.market_data import MarketDataFetcher
+
+_fetcher = MarketDataFetcher()
 
 # Timeline helper — optional, degrades gracefully
 try:
@@ -39,7 +45,7 @@ def _conn():
     return c
 
 def _price_poller_loop():
-    """Background thread to fetch yfinance prices for open positions every 60 seconds (M7 fix)."""
+    """Background thread to fetch live prices via Upstox API."""
     while True:
         try:
             if DB_PATH.exists():
@@ -49,35 +55,20 @@ def _price_poller_loop():
                 symbols = [r["symbol"] for r in rows]
                 
                 if symbols:
-                    raw = yf.download(
-                        tickers=" ".join(symbols),
-                        period="1d",
-                        interval="1m",
-                        progress=False,
-                        auto_adjust=False,
-                    )
+                    snap = _fetcher.get_preopen_snapshot(symbols)
                     prices = {}
-                    if not raw.empty:
-                        if len(symbols) == 1:
-                            try:
-                                # For a single symbol, Close is a Series
-                                prices[symbols[0]] = round(float(raw["Close"].iloc[-1]), 2)
-                            except Exception:
-                                pass
-                        else:
-                            for s in symbols:
-                                try:
-                                    # For multiple symbols, Close is a DataFrame with multi-columns
-                                    prices[s] = round(float(raw["Close"][s].iloc[-1]), 2)
-                                except Exception:
-                                    pass
+                    if snap:
+                        for sym, data in snap.items():
+                            if data.get("price"):
+                                prices[sym] = round(data["price"], 2)
                     
                     if prices:
                         with _latest_prices_lock:
                             _latest_prices.update(prices)
-        except Exception:
+        except Exception as e:
+            print(f"Poller error: {e}")
             pass
-        time.sleep(60)
+        time.sleep(5)
 
 # Start the background poller thread
 poller_thread = threading.Thread(target=_price_poller_loop, daemon=True)
