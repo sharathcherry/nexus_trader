@@ -71,25 +71,22 @@ def get_upstox_access_token():
         totp = pyotp.TOTP(totp_secret)
         current_totp = totp.now()
 
-        totp_input = wait.until(EC.presence_of_element_located((By.ID, "otpNum")))
-        # Use native setter to bypass React's synthetic event trap
-        driver.execute_script("""
-            var input = arguments[0];
-            var value = arguments[1];
-            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-            nativeInputValueSetter.call(input, value);
-            var event = new Event('input', { bubbles: true });
-            input.dispatchEvent(event);
-        """, totp_input, current_totp)
+        totp_input = wait.until(EC.element_to_be_clickable((By.ID, "otpNum")))
+        totp_input.click()
+        totp_input.send_keys(current_totp)
         time.sleep(1)
         
-        # Click Continue using JS as a fallback
         try:
-            continue_btn = wait.until(EC.presence_of_element_located((By.ID, "continueBtn")))
-            driver.execute_script("arguments[0].click();", continue_btn)
+            continue_btn = wait.until(EC.element_to_be_clickable((By.ID, "continueBtn")))
+            continue_btn.click()
             time.sleep(3)
         except Exception as e:
-            logger.error(f"Could not click continueBtn: {e}")
+            logger.error(f"Could not click continueBtn natively: {e}")
+            try:
+                driver.execute_script("arguments[0].click();", continue_btn)
+                time.sleep(3)
+            except Exception as e2:
+                logger.error(f"Could not click continueBtn with JS: {e2}")
 
         # Try to find PIN input or check if we already redirected
         logger.info("Entering PIN...")
