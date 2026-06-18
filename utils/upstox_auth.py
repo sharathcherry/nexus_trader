@@ -71,18 +71,19 @@ def get_upstox_access_token():
         totp = pyotp.TOTP(totp_secret)
         current_totp = totp.now()
 
+        # Type the TOTP slowly to trigger React events
         totp_input = wait.until(EC.presence_of_element_located((By.ID, "otpNum")))
-        totp_input.clear()
-        
-        # Set TOTP using JS to ensure React state updates correctly
-        driver.execute_script("arguments[0].value = arguments[1];", totp_input, current_totp)
-        driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", totp_input)
-        driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", totp_input)
-        time.sleep(2)
+        totp_input.click()
+        time.sleep(0.5)
+        for digit in current_totp:
+            totp_input.send_keys(digit)
+            time.sleep(0.1)
+            
+        time.sleep(1)
         
         # Click Continue using JS as a fallback
         try:
-            continue_btn = wait.until(EC.element_to_be_clickable((By.ID, "continueBtn")))
+            continue_btn = wait.until(EC.presence_of_element_located((By.ID, "continueBtn")))
             driver.execute_script("arguments[0].click();", continue_btn)
             time.sleep(3)
         except Exception as e:
