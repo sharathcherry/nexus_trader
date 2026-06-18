@@ -71,14 +71,16 @@ def get_upstox_access_token():
         totp = pyotp.TOTP(totp_secret)
         current_totp = totp.now()
 
-        # Type the TOTP slowly to trigger React events
+        # Type the TOTP slowly to trigger React events using ActionChains
         totp_input = wait.until(EC.presence_of_element_located((By.ID, "otpNum")))
-        totp_input.click()
-        time.sleep(0.5)
+        actions = ActionChains(driver)
+        actions.click(totp_input)
+        actions.pause(0.5)
         for digit in current_totp:
-            totp_input.send_keys(digit)
-            time.sleep(0.1)
-            
+            actions.send_keys(digit)
+            actions.pause(0.1)
+        actions.perform()
+        
         time.sleep(1)
         
         # Click Continue using JS as a fallback
