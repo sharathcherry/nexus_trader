@@ -1,8 +1,9 @@
 """
 AgentI2 — News Catalyst Classification Agent.
 
-Runs post-AgentI1. For each GapCandidate, fetches yfinance news headlines
-and calls Gemini Flash to classify the catalyst type and trade recommendation.
+Runs post-AgentI1. For each GapCandidate, fetches news headlines via Google
+News RSS (yfinance .news is IP-blocked on the VM) and calls Gemini Flash to
+classify the catalyst type and trade recommendation.
 
 Filters out candidates with catalyst_type in {BLOCK_DEAL, INDEX_REBALANCE}
 or trade_recommendation == AVOID. Returns filtered candidate list.
@@ -15,7 +16,6 @@ Decision refs: D-05 through D-08 (04A-CONTEXT.md)
 
 import asyncio
 
-import yfinance as yf
 from google import genai
 from google.genai import types
 
@@ -34,6 +34,33 @@ def _get_client():
     return _client
 
 _FILTER_CATALYSTS = {"BLOCK_DEAL", "INDEX_REBALANCE"}
+
+
+def _fetch_headlines(symbol: str, limit: int = 5) -> list[str]:
+    """Fetch recent news headlines for an NSE symbol via Google News RSS.
+
+    yfinance `.news` is IP-blocked on the production VM (Yahoo), so the news
+    filter was silently dead. Google News RSS is key-free and reachable. Returns
+    [] on any failure -- the caller treats that as 'no news' -> UNKNOWN
+    (fail-open), so a fetch outage never blocks a candidate.
+    """
+    import urllib.parse
+    import urllib.request
+    import xml.etree.ElementTree as ET
+
+    term = symbol[:-3] if symbol.endswith(".NS") else symbol
+    query = urllib.parse.quote(f'"{term}" stock NSE')
+    url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            root = ET.fromstring(resp.read())
+        # Only <item><title> entries (skips the channel/feed title).
+        titles = [t.text for t in root.findall(".//item/title") if t.text]
+        return titles[:limit]
+    except Exception as exc:
+        logger.debug("Google News RSS failed for %s: %s", symbol, exc)
+        return []
 
 
 async def run(candidates: list[GapCandidate]) -> list[GapCandidate]:
@@ -75,22 +102,15 @@ def _classify_news(candidate: GapCandidate) -> NewsAnalysis:
     Never raises — all exceptions caught and logged.
     """
     try:
-        ticker = yf.Ticker(candidate.symbol)
-        news_items = ticker.news or []
+        headlines = _fetch_headlines(candidate.symbol)
 
-        if not news_items:
+        if not headlines:
             logger.debug(f"{candidate.symbol}: no news — skipping Gemini call")
             return NewsAnalysis(
                 catalyst_type="UNKNOWN",
                 trade_recommendation="UNKNOWN",
                 summary="No news found",
             )
-
-        headlines = [
-            item.get("title", "")
-            for item in news_items[:5]
-            if item.get("title")
-        ]
 
         prompt = (
             f"Analyze these news headlines for {candidate.symbol} (Indian stock, NSE listed):\n"
