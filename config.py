@@ -18,13 +18,31 @@ class Config:
         self.TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
         self.TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 
+        # yfinance fallback toggle. Yahoo IP-blocks the production VM, so every
+        # yfinance call there returns empty after a wasted rate-limit sleep,
+        # spamming logs and adding minutes of latency to the scan. Set
+        # YFINANCE_ENABLED=false on the VM to fast-fail the fallback; leave the
+        # default (true) for local dev where yfinance still works.
+        self.YFINANCE_ENABLED = os.getenv("YFINANCE_ENABLED", "true").strip().lower() != "false"
+
         # Capital and risk
         self.CAPITAL              = 100_000
         self.RISK_PER_TRADE_PCT   = 0.02   # 2% risk per trade (aggressive; gap-fill is 72-80% win)
-        self.MAX_POSITION_PCT     = 0.40   # 40% cap per position -- prev 20% throttled gap-fill
-                                           # risk to ~0.3% (1.5% stop * 20% = Rs300). 40% lets the
-                                           # 2% risk budget actually bind on bigger gap-fill fills.
-        self.DAILY_LOSS_LIMIT_PCT = 0.04   # halt if daily P&L < -4% (raised with 2x sizing)
+        self.MAX_POSITION_PCT     = 0.40   # 40% of equity notional per position. With MIS_LEVERAGE
+                                           # below, MAX_OPEN_POSITIONS * MAX_POSITION_PCT = 5*40% =
+                                           # 200% notional -- exactly the deployment the validated
+                                           # backtest assumed (it sized 5 positions at 40% with no
+                                           # cash gate). Per-trade risk = 40% * 1.5% stop = 0.6% of
+                                           # equity; 5 simultaneous stops = 3% (= backtest maxDD).
+        self.DAILY_LOSS_LIMIT_PCT = 0.04   # halt if daily P&L < -4% (sits just above the 3% maxDD)
+
+        # Intraday leverage. Real NSE MIS gives ~5x; the validated gap-fill
+        # backtest implicitly assumed ~2x (it held up to 5 positions at 40%
+        # notional = 200% gross with no cash constraint). 2.0 reproduces that
+        # profile. The paper portfolio is otherwise cash-funded (1x); this only
+        # raises buying power so the 5-slot design is actually reachable.
+        # MIS_LEVERAGE = 1.0 restores the pure cash-gated behaviour.
+        self.MIS_LEVERAGE         = 2.0
 
         # Position limits
         self.MAX_OPEN_POSITIONS      = 5

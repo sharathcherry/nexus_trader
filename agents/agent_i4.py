@@ -305,12 +305,15 @@ class AgentI4:
                 else:
                     signal = False
             elif strategy == "GAP_FILL":
-                df_session = df.between_time("09:15", "15:30")
-                if len(df_session) >= 3:
-                    low_15m = df_session["Low"].iloc[:3].min()
-                    signal = current_price > low_15m
-                else:
-                    signal = False
+                # The validated backtest enters at the open with NO intraday
+                # confirmation (entry = day open, flat 1.5% stop, target =
+                # prev_close). The previous live code required price to reclaim
+                # the first-15min low (current_price > low_15m) -- a gate that
+                # was never in the backtest and silently skipped slow-filling
+                # gap-downs that never reclaimed their own low. Removed to match
+                # the validated edge: the entry window (>=09:30, <=14:00) and the
+                # R:R-at-fill gate are the only filters.
+                signal = True
             elif strategy == "RELATIVE_STRENGTH":
                 # Dual confirmation: price must be above session VWAP AND
                 # current volume ratio must show elevated participation

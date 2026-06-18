@@ -42,9 +42,10 @@ Identify what worked, what failed, and suggest conservative parameter adjustment
 IMPORTANT:
 - Respond with ONLY a valid JSON object matching the schema below -- no prose, no markdown
 - session_verdict must be exactly "PROFITABLE", "BREAKEVEN", or "LOSS"
-- parameter_adjustments current_value for RISK_PER_TRADE_PCT is in percentage form (1.0 means 1%)
-- tomorrow_watch contains up to 5 NSE symbol strings (e.g. "RELIANCE.NS")
-- Be conservative -- do NOT suggest raising position limits or risk per trade significantly
+- parameter_adjustments current_value for RISK_PER_TRADE_PCT is in percentage form (e.g. 2.0 means 2%)
+- The live profile is INTENTIONALLY aggressive and backtest-validated: 2% risk/trade, 40% position cap, ~2x intraday leverage, MIN_RR 1.5. Do NOT recommend reducing risk per trade or raising MIN_RR unless this session shows a concrete risk-control failure (e.g. daily loss limit hit)
+- tomorrow_watch contains up to 5 NSE symbol strings (e.g. "RELIANCE.NS"); these are advisory only and are NOT used to build the next-day watchlist (the scanner rebuilds it fresh)
+- Be conservative -- do NOT suggest raising position limits
 - NSE data is 15-minute delayed from live market
 
 Schema:
