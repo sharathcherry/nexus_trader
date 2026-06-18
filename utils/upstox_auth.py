@@ -73,20 +73,21 @@ def get_upstox_access_token():
 
         totp_input = wait.until(EC.element_to_be_clickable((By.ID, "otpNum")))
         totp_input.click()
-        totp_input.send_keys(current_totp)
-        time.sleep(1)
+        time.sleep(0.5)
+        for digit in current_totp:
+            totp_input.send_keys(digit)
+            time.sleep(0.1)
+        
+        time.sleep(0.5)
+        totp_input.send_keys(Keys.RETURN)
+        time.sleep(2)
         
         try:
             continue_btn = wait.until(EC.element_to_be_clickable((By.ID, "continueBtn")))
-            continue_btn.click()
+            driver.execute_script("arguments[0].click();", continue_btn)
             time.sleep(3)
         except Exception as e:
-            logger.error(f"Could not click continueBtn natively: {e}")
-            try:
-                driver.execute_script("arguments[0].click();", continue_btn)
-                time.sleep(3)
-            except Exception as e2:
-                logger.error(f"Could not click continueBtn with JS: {e2}")
+            logger.warning(f"Could not click continueBtn with JS (might have auto-submitted): {e}")
 
         # Try to find PIN input or check if we already redirected
         logger.info("Entering PIN...")
