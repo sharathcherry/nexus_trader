@@ -335,9 +335,23 @@ class PaperPortfolio:
             row = conn.execute("SELECT value FROM meta WHERE key = 'capital'").fetchone()
             current_capital = float(row["value"]) if row else float(config.CAPITAL)
 
-            # Guard: negative capital check
-            if current_capital < cost:
-                reason = f"Insufficient capital. Required: Rs{cost:.2f}, Available: Rs{current_capital:.2f}"
+            # Guard: buying-power check (simulated MIS intraday leverage).
+            # Capital is debited the full notional on buy and credited full
+            # proceeds on sell, so realised P&L is exact (equity = capital +
+            # MTM stays correct). To allow up to MIS_LEVERAGE x deployment we
+            # let capital draw down into margin, i.e. as low as
+            #   floor = -CAPITAL * (MIS_LEVERAGE - 1)
+            # giving total deployable notional = CAPITAL * MIS_LEVERAGE. At
+            # MIS_LEVERAGE=1.0 the floor is 0 and this is identical to the old
+            # pure-cash gate. This is what lets all 5 position slots fill (the
+            # validated backtest sized 5 x 40% = 200% notional with no cash gate).
+            margin_floor = -config.CAPITAL * (config.MIS_LEVERAGE - 1.0)
+            if (current_capital - cost) < margin_floor:
+                buying_power = current_capital - margin_floor
+                reason = (
+                    f"Insufficient buying power. Required: Rs{cost:.2f}, "
+                    f"Available: Rs{buying_power:.2f} (lev {config.MIS_LEVERAGE}x)"
+                )
                 logger.warning("BUY REJECTED %s — %s", symbol, reason)
                 notifier.send_rejection(symbol, reason)
                 return False

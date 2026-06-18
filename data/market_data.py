@@ -89,6 +89,13 @@ class MarketDataFetcher:
         ttl: cache freshness window in seconds. Defaults to the daily TTL
         (_cache_ttl). Not part of the cache key and never forwarded to yfinance.
         """
+        # Fast-fail when yfinance is disabled (Yahoo IP-blocks the prod VM).
+        # Returns empty immediately -- no rate-limit sleep, no dead network
+        # round-trip, no log spam. See config.YFINANCE_ENABLED.
+        from config import config as _cfg
+        if not getattr(_cfg, "YFINANCE_ENABLED", True):
+            return pd.DataFrame()
+
         if ttl is None:
             ttl = self._cache_ttl
         cache_key = ("YF", symbol, tuple(sorted(kwargs.items())))
