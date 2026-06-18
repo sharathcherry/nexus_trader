@@ -56,6 +56,7 @@ class AgentI4:
         self.nifty_bearish: bool = False
         self._last_nifty_check: float = 0.0
         self.circuit_set: set[str] = set()
+        self._feed_blind: bool = False  # True when the data feed is degraded (most symbols empty)
         self.monitor = AgentI6()
 
     # ------------------------------------------------------------------
@@ -85,6 +86,62 @@ class AgentI4:
                 result[sym] = pd.DataFrame()
                 
         return result
+
+    # ------------------------------------------------------------------
+    # Data-feed health (blind-feed detection)
+    # ------------------------------------------------------------------
+
+    def _check_feed_health(self, candles_map: dict[str, pd.DataFrame]) -> bool:
+        """
+        Detect a blind data feed. Upstox is the sole live source on the VM
+        (yfinance is disabled there), so if most monitored symbols return no
+        candles the feed is down and the session is effectively blind.
+
+        Returns True when blind. The caller suppresses NEW entries while blind
+        (never trade on stale/no data) but still runs position monitoring so any
+        position that does have data can still exit. Recovers automatically.
+
+        A loud ERROR + Telegram alert fires once on the blind->healthy edge and a
+        recovery notice once on the healthy edge (deduped via self._feed_blind).
+        Requires >=3 symbols to avoid false positives on a tiny watchlist.
+        """
+        total = len(candles_map)
+        if total < 3:
+            return self._feed_blind  # too small to judge; hold current state
+
+        empty = sum(1 for df in candles_map.values() if df is None or df.empty)
+        empty_rate = empty / total
+        blind = empty_rate > 0.5
+
+        if blind and not self._feed_blind:
+            self._feed_blind = True
+            logger.error(
+                "DATA FEED BLIND: %d/%d symbols returned no candles (%.0f%%) -- "
+                "pausing new entries until data recovers (check Upstox feed)",
+                empty, total, empty_rate * 100,
+            )
+            try:
+                from utils.telegram import notifier
+                notifier.send_alert(
+                    "DATA FEED BLIND",
+                    f"{empty}/{total} symbols no data ({empty_rate*100:.0f}%). "
+                    f"New entries paused -- check the Upstox feed.",
+                )
+            except Exception:
+                pass
+        elif not blind and self._feed_blind:
+            self._feed_blind = False
+            logger.warning(
+                "DATA FEED RECOVERED: %d/%d symbols have candles -- resuming entries",
+                total - empty, total,
+            )
+            try:
+                from utils.telegram import notifier
+                notifier.send_alert("DATA FEED RECOVERED", "Entries resumed.")
+            except Exception:
+                pass
+
+        return blind
 
     # ------------------------------------------------------------------
     # ORB level override (applied once, after 09:30 IST)
@@ -432,6 +489,8 @@ class AgentI4:
         """
         candles_map = await asyncio.to_thread(self._fetch_batch, list(self.watchlist_map.keys()))
 
+        # Position monitoring always runs (best-effort exits for any symbol that
+        # has data), even when the feed is degraded.
         self.monitor.monitor_positions(
             portfolio,
             self.watchlist_map,
@@ -440,9 +499,14 @@ class AgentI4:
             self.circuit_set,
         )
 
+        # Blind-feed guard: if most symbols returned no candles the live feed is
+        # down -- do NOT open new positions on stale/absent data.
+        feed_blind = self._check_feed_health(candles_map)
+
         self._evaluate_nifty_filter()
         self._maybe_apply_orb_override(candles_map, current_time, portfolio)
-        self._check_entries(candles_map, portfolio, current_time, order_manager)
+        if not feed_blind:
+            self._check_entries(candles_map, portfolio, current_time, order_manager)
 
     # ------------------------------------------------------------------
     # Main async loop
