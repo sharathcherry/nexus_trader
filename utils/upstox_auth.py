@@ -154,10 +154,12 @@ def get_upstox_access_token():
 
     except Exception as e:
         logger.error(f"Upstox automated login failed: {e}")
-        # Capture screenshot for debugging if it fails
         if driver:
+            logger.error(f"Current URL at failure: {driver.current_url}")
             driver.save_screenshot("upstox_error.png")
-            logger.info("Saved error screenshot to upstox_error.png")
+            with open("upstox_page.html", "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            logger.info("Saved error screenshot to upstox_error.png and page source to upstox_page.html")
         return None
     finally:
         if driver:
