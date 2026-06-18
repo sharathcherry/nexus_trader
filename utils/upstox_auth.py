@@ -45,7 +45,7 @@ def get_upstox_access_token():
     driver = None
     try:
         logger.info("Starting headless Chrome for Upstox login...")
-        driver = uc.Chrome(options=options)
+        driver = uc.Chrome(options=options, version_main=149)
         driver.get(login_url)
 
         wait = WebDriverWait(driver, 15)
