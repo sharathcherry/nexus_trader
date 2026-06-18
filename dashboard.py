@@ -643,14 +643,12 @@ footer {{ text-align:center; font-size:11px; color:var(--dim); font-family:var(-
   </div>
 
   <!-- 06 · TRADE LEDGER (preview + link) -->
-  <div class="section-label">TRADE LEDGER — FULL FINANCIAL BREAKDOWN <a class="tab-badge" onclick="showPanel('ledger');document.querySelector('[data-panel=ledger]').click()">TAB ↗</a></div>
-  <div class="card" style="background:var(--surface2); border-style:dashed; padding:16px 20px">
-    <div style="font-family:var(--mono); font-size:12px; color:var(--dim)">
+  <div class="section-label">TRADE LEDGER — FULL FINANCIAL BREAKDOWN</div>
+  <div class="card" style="background:var(--surface2); border-style:dashed; padding:16px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:100px;">
+    <div style="font-family:var(--mono); font-size:12px; color:var(--dim); text-align:center;">
       16 COLS · CHARGES GROUPED IN AMBER · FILTER: ALL / WINNERS / LOSERS
     </div>
-    <div style="margin-top:8px; display:flex; gap:4px; flex-wrap:wrap">
-      {"".join('<span style="display:inline-block;width:14px;height:10px;background:var(--border2);border-radius:2px"></span>' for _ in range(80))}
-    </div>
+    <button style="background:var(--surface3);color:var(--text);border:1px solid var(--border);padding:8px 16px;border-radius:4px;cursor:pointer;font-family:var(--mono);" onclick="showPanel('ledger');document.querySelector('[data-panel=ledger]').click()">Open Trade Ledger ↗</button>
   </div>
 
   <!-- 07 · LIVE LOG VIEWER (preview + link) -->
@@ -706,7 +704,8 @@ footer {{ text-align:center; font-size:11px; color:var(--dim); font-family:var(-
       <button class="fbtn" onclick="filterLog('sell',this)">SELL</button>
       <button class="fbtn" onclick="filterLog('warn',this)">WARN</button>
     </div>
-    <div class="log-auto"><span class="live-dot"></span> AUTO</div>
+    <!-- Right side: AUTO dot -->
+    <div class="log-auto"><span class="live-dot"></span> Auto-scroll: ON</div>
   </div>
 
   <div class="log-terminal" id="logTerminal" style="height:340px"></div>
@@ -955,6 +954,14 @@ async function updateLiveDashboard() {{
   }} catch (e) {{
     // Fail silently when served statically via file://
   }}
+}}
+
+// Check for file protocol to warn user
+if (window.location.protocol === 'file:') {{
+  const warnDiv = document.createElement('div');
+  warnDiv.style.cssText = "background:#ef4444;color:#fff;padding:8px;text-align:center;font-family:var(--mono);font-size:12px;position:fixed;top:0;left:0;right:0;z-index:9999;";
+  warnDiv.innerHTML = "⚠️ LIVE UPDATES DISABLED: You are viewing this file locally (file://). To see live updates, please run the backend server and open <a href='http://localhost:8080' style='color:#fff;text-decoration:underline;'>http://localhost:8080</a>";
+  document.body.prepend(warnDiv);
 }}
 
 // Count timeline rows on first load
