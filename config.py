@@ -28,24 +28,24 @@ class Config:
         # Capital and risk
         self.CAPITAL              = 100_000
         self.RISK_PER_TRADE_PCT   = 0.02   # 2% risk per trade (aggressive; gap-fill is 72-80% win)
-        self.MAX_POSITION_PCT     = 0.40   # 40% of equity notional per position. With MIS_LEVERAGE
-                                           # below, MAX_OPEN_POSITIONS * MAX_POSITION_PCT = 5*40% =
-                                           # 200% notional -- exactly the deployment the validated
-                                           # backtest assumed (it sized 5 positions at 40% with no
-                                           # cash gate). Per-trade risk = 40% * 1.5% stop = 0.6% of
-                                           # equity; 5 simultaneous stops = 3% (= backtest maxDD).
-        self.DAILY_LOSS_LIMIT_PCT = 0.04   # halt if daily P&L < -4% (sits just above the 3% maxDD)
+        self.MAX_POSITION_PCT     = 0.40   # 40% of equity notional per position. With
+                                           # MAX_OPEN_POSITIONS=3 and MIS_LEVERAGE=1.2 below,
+                                           # max deployment = 3*40% = 120% gross (1.2x). Per-trade
+                                           # risk = 40% * 1.5% stop = 0.6%; 3 simultaneous stops =
+                                           # 1.8% (well under the 4% daily halt).
+        self.DAILY_LOSS_LIMIT_PCT = 0.04   # halt if daily P&L < -4%
 
-        # Intraday leverage. Real NSE MIS gives ~5x; the validated gap-fill
-        # backtest implicitly assumed ~2x (it held up to 5 positions at 40%
-        # notional = 200% gross with no cash constraint). 2.0 reproduces that
-        # profile. The paper portfolio is otherwise cash-funded (1x); this only
-        # raises buying power so the 5-slot design is actually reachable.
-        # MIS_LEVERAGE = 1.0 restores the pure cash-gated behaviour.
-        self.MIS_LEVERAGE         = 2.0
+        # Intraday leverage (simulated MIS buying power). 1-yr walk-forward
+        # (2025-06..2026-06, commit-time backtest) showed leverage only SCALES
+        # the edge -- it does not improve it: 2x = +12.7%/maxDD 6.1%/Sharpe 0.81,
+        # 1.2x = +11.1%/maxDD 4.3%/Sharpe 0.87, 1x = +6.6%/maxDD 2.9%/Sharpe 0.87.
+        # 1.2x chosen: ~all of 2x's return at better risk-adjusted return and
+        # clear of the 4% halt. Buying power = CAPITAL * MIS_LEVERAGE = 120k =
+        # exactly 3 x 40% positions. MIS_LEVERAGE=1.0 restores pure cash gating.
+        self.MIS_LEVERAGE         = 1.2
 
         # Position limits
-        self.MAX_OPEN_POSITIONS      = 5
+        self.MAX_OPEN_POSITIONS      = 3
         self.MAX_TRADES_PER_DAY      = 15
         self.MAX_POSITIONS_PER_SECTOR = 2  # sector concentration guard
 
