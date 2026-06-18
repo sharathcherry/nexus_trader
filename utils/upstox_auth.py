@@ -37,7 +37,7 @@ def get_upstox_access_token():
     login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={api_key}&redirect_uri={redirect_uri}"
 
     options = uc.ChromeOptions()
-    options.add_argument("--headless")
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
@@ -74,19 +74,17 @@ def get_upstox_access_token():
         totp_input = wait.until(EC.presence_of_element_located((By.ID, "otpNum")))
         totp_input.clear()
         
-        # Type the TOTP slowly to trigger React events
-        for digit in current_totp:
-            totp_input.send_keys(digit)
-            time.sleep(0.05)
-            
-        time.sleep(1)
-        totp_input.send_keys(Keys.RETURN)
+        # Set TOTP using JS to ensure React state updates correctly
+        driver.execute_script("arguments[0].value = arguments[1];", totp_input, current_totp)
+        driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", totp_input)
+        driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", totp_input)
+        time.sleep(2)
         
         # Click Continue using JS as a fallback
         try:
             continue_btn = wait.until(EC.element_to_be_clickable((By.ID, "continueBtn")))
             driver.execute_script("arguments[0].click();", continue_btn)
-            time.sleep(2)
+            time.sleep(3)
         except Exception as e:
             logger.error(f"Could not click continueBtn: {e}")
 
