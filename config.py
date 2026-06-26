@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from datetime import date as _date
@@ -6,6 +7,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# AgentI9 self-tuning. After each session AgentI9 writes its validated parameter
+# suggestions here (repo root); Config._apply_overrides() loads them at the next
+# startup and RE-CLAMPS every value, so a stale/corrupt file can never widen risk
+# past the hard caps. Only risk-reducing params are honoured.
+_OVERRIDE_PATH = os.path.join(os.path.dirname(__file__), "param_overrides.json")
 
 
 class Config:
@@ -74,7 +81,53 @@ class Config:
         self.MAX_GAP_CANDIDATES  = 20
         self.MAX_WATCHLIST_SIZE  = 10
 
+        # Apply AgentI9's persisted overrides last, on top of the defaults above.
+        self._apply_overrides()
+
         self._warn_if_calendar_stale()
+
+    def _apply_overrides(self) -> None:
+        """Load AgentI9's param_overrides.json and apply re-clamped values.
+
+        Auto-tuning may only TIGHTEN risk: each param is clamped so the file can
+        never raise risk above the validated defaults. Missing/unreadable file is
+        a no-op. RISK_PER_TRADE_PCT is stored in percent form (e.g. 1.5 == 1.5%).
+        """
+        try:
+            with open(_OVERRIDE_PATH, encoding="utf-8") as fh:
+                ov = json.load(fh)
+        except FileNotFoundError:
+            return
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("param_overrides.json unreadable (%s) -- ignoring", e)
+            return
+        if not isinstance(ov, dict):
+            return
+
+        applied: dict = {}
+        if "RISK_PER_TRADE_PCT" in ov:
+            try:
+                v = max(0.005, min(float(ov["RISK_PER_TRADE_PCT"]) / 100.0, 0.02))
+                self.RISK_PER_TRADE_PCT = v
+                applied["RISK_PER_TRADE_PCT"] = v
+            except (TypeError, ValueError):
+                pass
+        if "MIN_RISK_REWARD" in ov:
+            try:
+                v = max(1.5, float(ov["MIN_RISK_REWARD"]))
+                self.MIN_RISK_REWARD = v
+                applied["MIN_RISK_REWARD"] = v
+            except (TypeError, ValueError):
+                pass
+        if "MAX_OPEN_POSITIONS" in ov:
+            try:
+                v = max(1, min(int(ov["MAX_OPEN_POSITIONS"]), self.MAX_OPEN_POSITIONS))
+                self.MAX_OPEN_POSITIONS = v
+                applied["MAX_OPEN_POSITIONS"] = v
+            except (TypeError, ValueError):
+                pass
+        if applied:
+            logger.info("Applied AgentI9 parameter overrides: %s", applied)
 
     # NSE holiday calendars -- update each year
     _NSE_HOLIDAYS_2026: frozenset = frozenset({

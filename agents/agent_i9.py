@@ -21,7 +21,7 @@ from groq import Groq, APIConnectionError, APITimeoutError, RateLimitError, APIS
 from pydantic import BaseModel, ValidationError
 from tabulate import tabulate
 
-from config import config
+from config import config, _OVERRIDE_PATH
 from utils.decision_logger import dlog
 from utils.logger import setup_logger
 from utils.telegram import notifier
@@ -35,6 +35,25 @@ MODEL      = "llama-3.3-70b-versatile"
 MAX_TOKENS = 2048
 TOKEN_CAP  = 8_000           # Groq context is generous; stay conservative
 CHARS_PER_TOKEN = 4
+
+# Params AgentI9 may auto-tune. config._apply_overrides() re-clamps each on load,
+# so writing here only ever tightens risk -- it can never widen it past the caps.
+_TUNABLE_PARAMS = {"RISK_PER_TRADE_PCT", "MIN_RISK_REWARD", "MAX_OPEN_POSITIONS"}
+
+
+def _persist_overrides(adjustments: list) -> None:
+    """Write validated, tunable suggestions to param_overrides.json so the next
+    session actually applies them. Without this the suggestions were advisory
+    only -- logged but never fed back into config."""
+    payload = {
+        a.param_name: a.suggested_value
+        for a in adjustments
+        if a.param_name in _TUNABLE_PARAMS
+    }
+    if not payload:
+        return
+    Path(_OVERRIDE_PATH).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    logger.info("Persisted parameter overrides for next session: %s", payload)
 
 SYSTEM_PROMPT = """You are a quantitative trading analyst reviewing an NSE India intraday paper trading session.
 Identify what worked, what failed, and suggest conservative parameter adjustments.
@@ -333,6 +352,12 @@ class AgentI9:
                 )
             except Exception as e:
                 logger.error("Failed to save daily review to database: %s", e)
+
+            # Feed validated adjustments forward so they actually take effect.
+            try:
+                _persist_overrides(review.parameter_adjustments)
+            except Exception as e:
+                logger.error("Failed to persist parameter overrides: %s", e)
 
             # Full decision audit log
             dlog.review_complete(

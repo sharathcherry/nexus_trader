@@ -294,10 +294,23 @@ class AgentI4:
         summary = portfolio.get_portfolio_summary()
         open_symbols = {p["symbol"] for p in summary.get("positions", [])}
 
+        # Persistent re-entry guard. bought_symbols is in-memory only, so a
+        # mid-session restart (or a fresh AgentI4 instance) loses it and the
+        # system re-buys a name that already stopped out -- averaging into a
+        # falling knife (observed 2026-06-23: SAIL/FIVESTAR/VBL each entered
+        # twice). Pull today's CLOSED trades straight from the DB each cycle so
+        # any symbol traded today, win or loss, is never re-entered.
+        try:
+            traded_today = {
+                t["symbol"] for t in portfolio.get_daily_report().get("trades", [])
+            }
+        except Exception:
+            traded_today = set()
+
         # Iterate over a snapshot
         for sym in list(self.watchlist_map.keys()):
             # Skip already bought symbols to prevent duplicate/re-entry trades
-            if sym in self.bought_symbols:
+            if sym in self.bought_symbols or sym in traded_today:
                 continue
 
             # Skip circuit-hit symbols

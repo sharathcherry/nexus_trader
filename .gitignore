@@ -21,6 +21,9 @@ execution/portfolio.db
 execution/portfolio.db-wal
 execution/portfolio.db-shm
 
+# AgentI9 self-tuning overrides (runtime state, regenerated each session)
+param_overrides.json
+
 # Logs (runtime output -- never commit)
 logs/*.log
 logs/nexus.log.*
