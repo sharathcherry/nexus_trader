@@ -57,6 +57,8 @@ class AgentI4:
         self._last_nifty_check: float = 0.0
         self.circuit_set: set[str] = set()
         self._feed_blind: bool = False  # True when the data feed is degraded (most symbols empty)
+        self._stop_halt_logged: bool = False       # consecutive-stop halt announced today
+        self._blocked_sectors_logged: set[str] = set()  # sector circuit breakers announced today
         self.monitor = AgentI6()
 
     # ------------------------------------------------------------------
@@ -301,17 +303,74 @@ class AgentI4:
         # twice). Pull today's CLOSED trades straight from the DB each cycle so
         # any symbol traded today, win or loss, is never re-entered.
         try:
-            traded_today = {
-                t["symbol"] for t in portfolio.get_daily_report().get("trades", [])
-            }
+            todays_trades = list(portfolio.get_daily_report().get("trades", []))
         except Exception:
-            traded_today = set()
+            todays_trades = []
+        traded_today = {t["symbol"] for t in todays_trades}
+
+        # Consecutive-stop halt. A stop-out streak means the regime is hostile
+        # to mean reversion today (2026-06-23: 4 straight SL_HITs, -3,227;
+        # 2026-07-01: 4 SL_HITs, -2,318). get_daily_report() returns trades
+        # ordered by exit_time DESC, so the first N are the most recent.
+        # Exits/monitoring are unaffected -- this method only opens positions.
+        # (local import: a later `from config import config` in this function
+        # makes `config` function-local, so the module-level import is shadowed)
+        from config import config
+        halt_n = getattr(config, "CONSECUTIVE_STOP_HALT", 3)
+        recent = todays_trades[:halt_n]
+        if len(recent) == halt_n and all(
+            t.get("exit_reason") == "SL_HIT" for t in recent
+        ):
+            if not self._stop_halt_logged:
+                logger.warning(
+                    "AgentI4: last %d closed trades all SL_HIT -- halting new "
+                    "entries for the day (exits keep running)", halt_n,
+                )
+                self._stop_halt_logged = True
+            return
+
+        # Sector circuit breaker. The concurrent sector cap (MAX_POSITIONS_PER_SECTOR)
+        # does not stop replacement entries after stop-outs, so a sector-wide selloff
+        # day stacks same-sector losers serially (2026-07-01: INFY/BSOFT stopped,
+        # HCLTECH/TCS bought as replacements -- 4 IT losers). Block any sector with
+        # >= SECTOR_STOPOUT_LIMIT stop-outs today. Best-effort: lookup failure never
+        # blocks a trade, matching portfolio.py's sector guard.
+        blocked_sectors: set[str] = set()
+        try:
+            from data.universe import get_symbol_sector
+            stop_counts: dict[str, int] = {}
+            for t in todays_trades:
+                if t.get("exit_reason") != "SL_HIT":
+                    continue
+                sec = get_symbol_sector(t.get("symbol", ""))
+                if sec:
+                    stop_counts[sec] = stop_counts.get(sec, 0) + 1
+            limit = getattr(config, "SECTOR_STOPOUT_LIMIT", 2)
+            blocked_sectors = {s for s, n in stop_counts.items() if n >= limit}
+            for sec in blocked_sectors - self._blocked_sectors_logged:
+                logger.warning(
+                    "AgentI4: %d stop-outs in sector %s today -- blocking new "
+                    "entries in that sector for the day",
+                    stop_counts[sec], sec,
+                )
+                self._blocked_sectors_logged.add(sec)
+        except Exception:
+            blocked_sectors = set()
 
         # Iterate over a snapshot
         for sym in list(self.watchlist_map.keys()):
             # Skip already bought symbols to prevent duplicate/re-entry trades
             if sym in self.bought_symbols or sym in traded_today:
                 continue
+
+            # Skip symbols in a circuit-broken sector
+            if blocked_sectors:
+                try:
+                    from data.universe import get_symbol_sector
+                    if get_symbol_sector(sym) in blocked_sectors:
+                        continue
+                except Exception:
+                    pass
 
             # Skip circuit-hit symbols
             if sym in self.circuit_set:

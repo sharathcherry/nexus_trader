@@ -56,6 +56,10 @@ class Config:
         self.MAX_TRADES_PER_DAY      = 15
         self.MAX_POSITIONS_PER_SECTOR = 2  # sector concentration guard
 
+        # Defensive entry guards (2026-07-02, after 4 same-sector SL_HITs on Jul 1)
+        self.SECTOR_STOPOUT_LIMIT   = 2   # SL_HITs in one sector today -> block new entries in that sector
+        self.CONSECUTIVE_STOP_HALT  = 3   # last N closed trades all SL_HIT -> no new entries today
+
         # Entry/exit R:R
         self.MIN_RISK_REWARD = 1.5
 
