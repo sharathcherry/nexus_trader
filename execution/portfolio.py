@@ -15,7 +15,7 @@ Schema decisions:
 import sqlite3
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytz
 
@@ -747,6 +747,31 @@ class PaperPortfolio:
             conn.close()
 
         return {"daily_pnl": daily_pnl, "trades": trades}
+
+    def get_recent_daily_pnl(self, days: int) -> list:
+        """Net P&L per session over the last `days` calendar days, excluding today.
+
+        Returns [(date_str, net_pnl), ...] newest first, one row per date that
+        has closed trades. Consumed by AgentI4's multi-day loss brakes.
+        """
+        conn = _get_conn()
+        if conn is None:
+            return []
+        try:
+            now = datetime.now(IST)
+            today = now.strftime("%Y-%m-%d")
+            cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+            rows = conn.execute(
+                """SELECT substr(exit_time, 1, 10) AS d, SUM(net_pnl) AS pnl
+                   FROM trades
+                   WHERE substr(exit_time, 1, 10) >= ?
+                     AND substr(exit_time, 1, 10) < ?
+                   GROUP BY d ORDER BY d DESC""",
+                (cutoff, today),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [(r["d"], float(r["pnl"] or 0.0)) for r in rows]
 
     # ------------------------------------------------------------------
     # Watchlist persistence (called by scheduler + agent_i4)

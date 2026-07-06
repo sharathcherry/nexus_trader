@@ -59,6 +59,7 @@ class AgentI4:
         self._feed_blind: bool = False  # True when the data feed is degraded (most symbols empty)
         self._stop_halt_logged: bool = False       # consecutive-stop halt announced today
         self._blocked_sectors_logged: set[str] = set()  # sector circuit breakers announced today
+        self._multiday_halt_logged: bool = False   # multi-day loss brake announced today
         self.monitor = AgentI6()
 
     # ------------------------------------------------------------------
@@ -328,6 +329,46 @@ class AgentI4:
                 )
                 self._stop_halt_logged = True
             return
+
+        # Multi-day loss brakes. Every other guard is intra-day, so nothing
+        # stopped the system from returning the morning after a disaster day
+        # and bleeding again (2026-07-01 -2,318 followed by three more red
+        # sessions, -3,049). Two brakes, both on closed-trade history:
+        #   1. Big-loss cooldown -- the most recent prior session lost >=
+        #      BIG_LOSS_COOLDOWN_PCT of capital -> sit out today.
+        #   2. Rolling brake -- net P&L over the last ROLLING_LOSS_LOOKBACK_DAYS
+        #      calendar days <= -ROLLING_LOSS_HALT_PCT of capital -> sit out
+        #      until the window rolls past the losses.
+        # Replayed on all 13 live sessions to date these skip Jun 24/25 and
+        # Jul 2/6 (~2,459 saved) without sacrificing any profitable session.
+        # Fail-open on DB errors; exits/monitoring unaffected.
+        try:
+            lookback = getattr(config, "ROLLING_LOSS_LOOKBACK_DAYS", 5)
+            daily = portfolio.get_recent_daily_pnl(lookback)
+            base = float(config.CAPITAL)
+            cooldown_pct = getattr(config, "BIG_LOSS_COOLDOWN_PCT", 0.02)
+            rolling_pct = getattr(config, "ROLLING_LOSS_HALT_PCT", 0.025)
+            if daily and float(daily[0][1]) <= -cooldown_pct * base:
+                if not self._multiday_halt_logged:
+                    logger.warning(
+                        "AgentI4: previous session lost Rs%.0f (>= %.1f%% of "
+                        "capital) -- cooling down, no new entries today",
+                        -float(daily[0][1]), 100 * cooldown_pct,
+                    )
+                    self._multiday_halt_logged = True
+                return
+            if daily and sum(float(p) for _, p in daily) <= -rolling_pct * base:
+                if not self._multiday_halt_logged:
+                    logger.warning(
+                        "AgentI4: last %d days net Rs%.0f (<= -%.1f%% of "
+                        "capital) -- rolling loss brake, no new entries today",
+                        lookback, sum(float(p) for _, p in daily),
+                        100 * rolling_pct,
+                    )
+                    self._multiday_halt_logged = True
+                return
+        except Exception:
+            pass
 
         # Sector circuit breaker. The concurrent sector cap (MAX_POSITIONS_PER_SECTOR)
         # does not stop replacement entries after stop-outs, so a sector-wide selloff

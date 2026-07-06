@@ -60,6 +60,12 @@ class Config:
         self.SECTOR_STOPOUT_LIMIT   = 2   # SL_HITs in one sector today -> block new entries in that sector
         self.CONSECUTIVE_STOP_HALT  = 3   # last N closed trades all SL_HIT -> no new entries today
 
+        # Multi-day loss brakes (2026-07-06, after 4 straight red sessions Jul 1-6).
+        # Percentages are of starting CAPITAL, not current equity.
+        self.BIG_LOSS_COOLDOWN_PCT      = 0.02   # prev session net <= -2% -> no entries today
+        self.ROLLING_LOSS_LOOKBACK_DAYS = 5      # calendar-day window for the rolling brake
+        self.ROLLING_LOSS_HALT_PCT      = 0.025  # window net <= -2.5% -> no entries today
+
         # Entry/exit R:R
         self.MIN_RISK_REWARD = 1.5
 
